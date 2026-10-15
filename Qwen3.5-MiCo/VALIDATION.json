@@ -1,0 +1,12 @@
+{
+  "python_syntax": "passed",
+  "launcher_dry_run": "passed",
+  "native_random_weight_cpu_tests": {
+    "run": 7,
+    "passed": 7,
+    "environment": "Python 3.12 / torch 2.7.0 / transformers 5.2.0",
+    "historical_core_parity": "passed with optional historical source supplied"
+  },
+  "real_9b_gpu_inference": "not performed",
+  "benchmark_reproduction": "not performed"
+}

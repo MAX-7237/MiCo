@@ -2,7 +2,7 @@
 
 MiCo source release for visual token pruning in image and video language models.
 
-**Status: source preview.** The implementations and evaluation entry points are included, but clean-environment installation, GPU inference, and benchmark reproduction have not yet been completed for this release. Dependency files are candidate pinned configurations, not validated lockfiles. Qwen3.5-9B is not included: its implementation and runnable environment have not been recovered.
+**Status: source preview.** The implementations and evaluation entry points are included, but clean-environment installation, GPU inference, and benchmark reproduction have not yet been completed for this release. Dependency files are candidate pinned configurations, not validated lockfiles. Qwen3.5-9B is included in `Qwen3.5-MiCo`: its recovered core passes seven native random-weight CPU tests in the recorded environment. Full 9B GPU inference and benchmark reproduction remain pending.
 
 ## Implementations
 
@@ -17,6 +17,10 @@ MiCo source release for visual token pruning in image and video language models.
 The public `run_mico.py` launchers select these existing implementation IDs. The suffix identifies the pruning layer; it is not the token budget. Image-model S1-only evaluation uses `--variant mico-s1`. Video S1-only is not exposed. Other historical method names and baselines remain where required by framework imports; they should not be treated as aliases for MiCo.
 
 For image models, stage 1 retains up to `min(N, 2T)` visual tokens. Stage 2 performs a post-layer-K cut with target `R = (T*L - K*N_enter)/(L-K)`, subject to implementation rounding and clamping. Video uses its own per-frame token layout and budget.
+
+## Qwen3.5-9B
+
+See [Qwen3.5-MiCo](Qwen3.5-MiCo/README.md) for the recovered QK-at-layer-12 adapter, single-image inference, and core tests. It shares the `vlmevalkit-qwen3vl` environment (Python 3.12 / PyTorch 2.7.0 / Transformers 5.2.0). Later task-query hybrid variants are available in the core API and are documented separately from the default QK recipe.
 
 ## Environments
 
