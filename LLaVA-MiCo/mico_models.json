@@ -1,0 +1,30 @@
+{
+  "llava-1.5-7b": {
+    "folder": "LLaVA-MiCo",
+    "kind": "image",
+    "k": 7,
+    "model_path": "liuhaotian/llava-v1.5-7b",
+    "method": "attn_H_cov_vit_proj_llm_7"
+  },
+  "llava-1.5-13b": {
+    "folder": "LLaVA-MiCo",
+    "kind": "image",
+    "k": 8,
+    "model_path": "liuhaotian/llava-v1.5-13b",
+    "method": "attn_H_cov_vit_proj_llm_8"
+  },
+  "llava-next-7b": {
+    "folder": "LLaVA-MiCo",
+    "kind": "image",
+    "k": 7,
+    "model_path": "liuhaotian/llava-v1.6-vicuna-7b",
+    "method": "attn_H_cov_vit_proj_llm_7"
+  },
+  "llava-next-13b": {
+    "folder": "LLaVA-MiCo",
+    "kind": "image",
+    "k": 14,
+    "model_path": "liuhaotian/llava-v1.6-vicuna-13b",
+    "method": "attn_H_cov_vit_proj_llm_14"
+  }
+}

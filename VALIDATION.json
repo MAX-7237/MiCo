@@ -1,0 +1,42 @@
+{
+  "release_status": "source preview",
+  "python_syntax_files": 1438,
+  "python_syntax_errors": 0,
+  "launcher_dry_runs": [
+    {
+      "model": "llava-1.5-7b",
+      "exit_code": 0
+    },
+    {
+      "model": "llava-1.5-13b",
+      "exit_code": 0
+    },
+    {
+      "model": "llava-next-7b",
+      "exit_code": 0
+    },
+    {
+      "model": "llava-next-13b",
+      "exit_code": 0
+    },
+    {
+      "model": "llava-video-7b",
+      "exit_code": 0
+    },
+    {
+      "model": "qwen2.5-vl-7b",
+      "exit_code": 0
+    },
+    {
+      "model": "internvl3-8b",
+      "exit_code": 0
+    },
+    {
+      "model": "qwen3-vl-8b",
+      "exit_code": 0
+    }
+  ],
+  "gpu_inference": "not performed",
+  "clean_environment_installation": "not completed",
+  "benchmark_reproduction": "not performed"
+}

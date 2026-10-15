@@ -1,0 +1,2 @@
+# Install after requirements.txt; requires matching CUDA toolkit/compiler.
+flash-attn==2.8.3

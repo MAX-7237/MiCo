@@ -1,0 +1,2 @@
+# Install after requirements.txt; requires matching CUDA toolkit/compiler.
+# flash-attn is NOT installed in this observed environment; no version is guessed.

@@ -1,0 +1,9 @@
+{
+  "qwen3-vl-8b": {
+    "folder": "VLMEvalKit-MiCo-Qwen3",
+    "kind": "vlmeval",
+    "k": 6,
+    "registry": "Qwen3-VL-8B-Instruct",
+    "method": "attn_H_cov_vit_proj_llm_6"
+  }
+}

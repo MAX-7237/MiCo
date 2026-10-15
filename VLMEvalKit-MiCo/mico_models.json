@@ -1,0 +1,16 @@
+{
+  "qwen2.5-vl-7b": {
+    "folder": "VLMEvalKit-MiCo",
+    "kind": "vlmeval",
+    "k": 2,
+    "registry": "Qwen2.5-VL-7B-Instruct",
+    "method": "attn_H_cov_vit_proj_llm_2"
+  },
+  "internvl3-8b": {
+    "folder": "VLMEvalKit-MiCo",
+    "kind": "vlmeval",
+    "k": 4,
+    "registry": "InternVL3-8B",
+    "method": "attn_H_cov_vit_proj_llm_4"
+  }
+}
