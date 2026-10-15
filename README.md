@@ -15,11 +15,7 @@ Zheng Lu<sup>2</sup>, Bofan Zhu<sup>2</sup>, Renyuan Li<sup>2</sup>, Shanghang Z
 </div>
 
 <p align="left">
-<sup>1</sup> State Key Laboratory of Multimedia Information Processing, School of Computer Science, Peking University<br>
-<sup>2</sup> University of Electronic Science and Technology of China<br>
-<sup>3</sup> Nanyang Technological University<br>
-<sup>4</sup> The University of Hong Kong<br>
-<sup>5</sup> New York University
+<sup>1</sup> State Key Laboratory of Multimedia Information Processing, School of Computer Science, Peking University; <sup>2</sup> University of Electronic Science and Technology of China; <sup>3</sup> Nanyang Technological University; <sup>4</sup> The University of Hong Kong; <sup>5</sup> New York University
 </p>
 
 <div align="center">
