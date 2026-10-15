@@ -12,13 +12,17 @@ Rui Huang<sup>4</sup>, Jiajun Cao<sup>1</sup>, Sixiang Chen<sup>1</sup>, Hao Jia
 Zheng Lu<sup>2</sup>, Bofan Zhu<sup>2</sup>, Renyuan Li<sup>2</sup>, Shanghang Zhang<sup>1,†</sup>
 </p>
 
-<p align="center">
+</div>
+
+<p align="left">
 <sup>1</sup> State Key Laboratory of Multimedia Information Processing, School of Computer Science, Peking University<br>
 <sup>2</sup> University of Electronic Science and Technology of China<br>
 <sup>3</sup> Nanyang Technological University<br>
 <sup>4</sup> The University of Hong Kong<br>
 <sup>5</sup> New York University
 </p>
+
+<div align="center">
 
 <p align="center">
 <sup>*</sup> Equal contribution. &nbsp; <sup>†</sup> Corresponding author.
