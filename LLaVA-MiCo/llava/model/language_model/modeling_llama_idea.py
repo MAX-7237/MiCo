@@ -18,7 +18,7 @@ class IdeaLlamaModel(LlamaModel):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
-        
+
         if config.num_hidden_layers == 32:
             self.scale = "7b"
         elif config.num_hidden_layers == 40:
@@ -34,12 +34,12 @@ class IdeaLlamaModel(LlamaModel):
             self.visual_token_length = 5*int(os.environ.get("NUM_CLUSTERS",64))
             self.anyres = True
 
-        # PrefixVLM config
+        # TOPSEarly config
         if config.num_hidden_layers == 32:
             self.pruning_loc = [2, 8, 16, 24]
         elif config.num_hidden_layers == 40:
             self.pruning_loc = [2, 8, 20]
-    
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -336,8 +336,8 @@ class IdeaLlamaModel(LlamaModel):
                             f"expand_new: {len(expand_ids)}, "
                             f"collapsed: {len(collapse_ids)}"
                         )
-                    
-                    
+
+
                     else:
                         layer_outputs = decoder_layer(
                             hidden_states,
@@ -353,7 +353,7 @@ class IdeaLlamaModel(LlamaModel):
                         hidden_states,
                         attention_mask=attention_mask,
                         position_ids=torch.tensor([[
-                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]], 
+                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]],
                             dtype=torch.int64).cuda(),
                         past_key_value=past_key_values,
                         output_attentions=output_attentions,

@@ -32,7 +32,7 @@ if hasattr(LlamaDynamicNTKScalingRotaryEmbedding, 'forward'):
     LlamaDynamicNTKScalingRotaryEmbedding.forward = _patched_rotary_forward
 
 
-# STAR-FastV Multi-layer pruning schedule
+# TOPSPrototype-FastV Multi-layer pruning schedule
 STAR_FASTV_SCHEDULE = {
     "7b": {
         192: [(2, 300), (8, 200), (16, 150), (24, 192)],
@@ -46,11 +46,11 @@ STAR_FASTV_SCHEDULE = {
     }
 }
 
-# STAR-V2 Two-Stage Pruning Schedule
+# TOPSPrototype-V2 Two-Stage Pruning Schedule
 # Stage 1 (llava_arch): 576 -> 288 or 2880 -> 1440 (50% via visual self-attention)
 # Stage 2 (here): 288 -> target or 1440 -> target (text-guided progressive pruning)
 # Goal: Average tokens across all layers ≈ target budget
-STAR_V2_SCHEDULE = {
+TOPS_VARIANT2_SCHEDULE = {
     "7b": {
         # For pad mode: Stage 1 gives 288 tokens (576/2)
         # 32 layers: (288*2 + X*6 + Y*8 + Z*8 + T*8) / 32 = target
@@ -69,13 +69,13 @@ STAR_V2_SCHEDULE = {
     }
 }
 
-# STAR-PRO Two-Stage Pruning Schedule (Adaptive)
+# TOPS-Experimental Two-Stage Pruning Schedule (Adaptive)
 # Stage 1 (llava_arch): 576 -> target*2 (THCP pruning, adaptive to target)
 # Stage 2 (here): target*2 -> target (text-guided progressive pruning)
 # Goal: Average tokens across all layers = target budget (exact)
 # Strategy: 2-3 pruning steps with front-heavy distribution (more tokens in early layers)
 # Note: For anyres mode, target is automatically multiplied by 5 in __init__
-STAR_PRO_SCHEDULE = {
+TOPS_EXPERIMENTAL_SCHEDULE = {
     "7b": {
         # Pad mode targets (user passes T, actual target = T)
         192: [(8, 192), (16, 144), (24, 96)],      # Stage 1: 384 → Avg = 192.0
@@ -134,12 +134,12 @@ COVER_PRUNE_2_SCHEDULE = {
     }
 }
 
-# STAR-V5 Schedule (S2 Only - Progressive Pruning Only)
+# TOPSPrototype-V5 Schedule (S2 Only - Progressive Pruning Only)
 # Stage 1 (llava_arch): Skip THCP, keep all 576 tokens
 # Stage 2 (here): 576 -> target (text-guided progressive pruning)
 # Goal: Isolate Stage 2 contribution for ablation study
 # Note: Aligned with SparseVLM's pruning layers (2, 6, 15) for fair comparison
-STAR_V5_SCHEDULE = {
+TOPS_VARIANT5_SCHEDULE = {
     "7b": {
         # Pad mode targets (user passes T, actual target = T)
         # Initial: 576 tokens (no Stage 1 THCP)
@@ -191,12 +191,12 @@ STAR_V5_SCHEDULE = {
     }
 }
 
-# STAR-PRO Alternative Schedules for Ablation Study
+# TOPS-Experimental Alternative Schedules for Ablation Study
 # These schedules are used to compare different pruning strategies
 # All schedules maintain the same average token count (e.g., 128) for fair comparison
 
 # Single-stage pruning: Prune at only 2 specific layers
-STAR_PRO_SINGLE_STAGE_SCHEDULE = {
+TOPS_EXPERIMENTAL_SINGLE_STAGE_SCHEDULE = {
     "7b": {
         128: [(2, 64), (10, 32)],                  # Stage 1: 256 → Avg = 128.0 (single-stage at layers 2, 10)
         # Verify: (256*2 + 64*8 + 32*22) / 32 = (512 + 512 + 704) / 32 = 128.0 ✓
@@ -211,7 +211,7 @@ STAR_PRO_SINGLE_STAGE_SCHEDULE = {
 }
 
 # Uniform progressive pruning: More gradual and uniform distribution
-STAR_PRO_UNIFORM_SCHEDULE = {
+TOPS_EXPERIMENTAL_UNIFORM_SCHEDULE = {
     "7b": {
         128: [(10, 128), (20, 64), (28, 32)],      # Stage 1: 256 → Avg = 128.0 (uniform progressive)
         # Verify: (256*10 + 128*10 + 64*8 + 32*4) / 32 = (2560 + 1280 + 512 + 128) / 32 = 128.0 ✓
@@ -226,18 +226,18 @@ STAR_PRO_UNIFORM_SCHEDULE = {
     }
 }
 
-class STARVLMModel(LlamaModel):
+class TOPSPrototypeModel(LlamaModel):
     """
-    STAR-VLM: Multi-Layer Progressive Pruning with Attention-based Importance Scoring
+    TOPSPrototype-VLM: Multi-Layer Progressive Pruning with Attention-based Importance Scoring
 
     Supports two modes:
-    1. STAR (original): Single-stage pruning from original visual tokens
-    2. STAR-V2 (two-stage):
+    1. TOPSPrototype (original): Single-stage pruning from original visual tokens
+    2. TOPSPrototype-V2 (two-stage):
        - Stage 1 (llava_arch): Visual self-attention pruning (50% reduction)
        - Stage 2 (here): Text-guided progressive pruning to target
     """
 
-    def __init__(self, config: LlamaConfig, starvlm_config: Dict):
+    def __init__(self, config: LlamaConfig, tops_prototype_config: Dict):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
@@ -262,14 +262,14 @@ class STARVLMModel(LlamaModel):
             self.anyres = False
 
         # Config
-        self.target_visual_tokens = starvlm_config["T"]
-        self.mode = starvlm_config.get("mode", "star")  # "star", "star_v2", or "star_pro"
+        self.target_visual_tokens = tops_prototype_config["T"]
+        self.mode = tops_prototype_config.get("mode", "tops_prototype")  # "tops_prototype", "tops_variant2", or "tops_experimental"
 
         # Load pruning schedule based on mode
         if self.mode == "cover_prune_2":
             # COVER-Prune-2: two-stage. S1 (llava_arch) = inner-weighted cls_attn
             # coverage keeping 2×T tokens; S2 (here) = progressive LLM-layer pruning
-            # (T then T/4) reusing the STAR-PRO text-guided machinery unchanged.
+            # (T then T/4) reusing the TOPS-Experimental text-guided machinery unchanged.
             self.visual_token_length = self.target_visual_tokens * 2
             self.pruning_schedule = COVER_PRUNE_2_SCHEDULE[self.scale][self.target_visual_tokens]
             schedule_name = "COVER-Prune-2 (S1=2T, LLM: T then T/4)"
@@ -278,13 +278,13 @@ class STARVLMModel(LlamaModel):
                 print(f"[COVER-Prune-2 Stage 2] Initialized")
                 print(f"  Scale: {self.scale}")
                 print(f"  Aspect ratio: {'anyres' if self.anyres else 'pad'}")
-                print(f"  User passed T: {starvlm_config['T']}")
+                print(f"  User passed T: {tops_prototype_config['T']}")
                 print(f"  Expected input from Stage 1: {self.visual_token_length} tokens (T × 2)")
                 print(f"  Target tokens: {self.target_visual_tokens}")
                 print(f"  Pruning schedule: {schedule_name}")
                 print(f"  Schedule: {self.pruning_schedule}")
-        elif self.mode == "star_pro":
-            # STAR-PRO: Two-stage mode with adaptive schedule (Stage 1 gives target*2)
+        elif self.mode == "tops_experimental":
+            # TOPS-Experimental: Two-stage mode with adaptive schedule (Stage 1 gives target*2)
             # Note: User should pass T=128 for pad, T=640 for anyres (manually adjusted)
             self.visual_token_length = self.target_visual_tokens * 2
 
@@ -304,51 +304,51 @@ class STARVLMModel(LlamaModel):
                 # Use predefined schedules
                 pruning_schedule_mode = os.environ.get('PRUNING_SCHEDULE_MODE', 'progressive')
                 if pruning_schedule_mode == 'single_stage':
-                    self.pruning_schedule = STAR_PRO_SINGLE_STAGE_SCHEDULE[self.scale][self.target_visual_tokens]
+                    self.pruning_schedule = TOPS_EXPERIMENTAL_SINGLE_STAGE_SCHEDULE[self.scale][self.target_visual_tokens]
                     schedule_name = "Single-stage (layers 2, 10)"
                 elif pruning_schedule_mode == 'uniform':
-                    self.pruning_schedule = STAR_PRO_UNIFORM_SCHEDULE[self.scale][self.target_visual_tokens]
+                    self.pruning_schedule = TOPS_EXPERIMENTAL_UNIFORM_SCHEDULE[self.scale][self.target_visual_tokens]
                     schedule_name = "Uniform progressive"
                 else:  # 'progressive' (default)
-                    self.pruning_schedule = STAR_PRO_SCHEDULE[self.scale][self.target_visual_tokens]
+                    self.pruning_schedule = TOPS_EXPERIMENTAL_SCHEDULE[self.scale][self.target_visual_tokens]
                     schedule_name = "Progressive front-heavy (default)"
 
             if os.environ.get('ENABLE_DEBUG', '0') == '1':
-                print(f"[STAR-PRO Stage 2] Initialized")
+                print(f"[TOPS-Experimental Stage 2] Initialized")
                 print(f"  Scale: {self.scale}")
                 print(f"  Aspect ratio: {'anyres' if self.anyres else 'pad'}")
-                print(f"  User passed T: {starvlm_config['T']}")
+                print(f"  User passed T: {tops_prototype_config['T']}")
                 print(f"  Expected input from Stage 1: {self.visual_token_length} tokens (T × 2)")
                 print(f"  Stage 1 method: THCP (adaptive to target)")
                 print(f"  Target tokens: {self.target_visual_tokens}")
                 print(f"  Pruning schedule: {schedule_name}")
                 print(f"  Schedule: {self.pruning_schedule}")
-        elif self.mode == "star_v5":
-            # STAR-V5: S2 Only ablation (Stage 1 skipped, progressive pruning only)
+        elif self.mode == "tops_variant5":
+            # TOPSPrototype-V5: S2 Only ablation (Stage 1 skipped, progressive pruning only)
             # Stage 1 (llava_arch) skips THCP and keeps all 576 (or 2880) tokens
             # Stage 2 (here) progressively prunes from 576 -> target
             # Keep visual_token_length at full size (576 or 2880)
             # visual_token_length is already set above based on aspect_ratio
-            self.pruning_schedule = STAR_V5_SCHEDULE[self.scale][self.target_visual_tokens]
+            self.pruning_schedule = TOPS_VARIANT5_SCHEDULE[self.scale][self.target_visual_tokens]
             import os
             if os.environ.get('ENABLE_DEBUG', '0') == '1':
                 print(f"\n{'='*80}")
-                print(f"[STAR-V5 Stage 2 Only] Initialized (Ablation: S2 Only)")
+                print(f"[TOPSPrototype-V5 Stage 2 Only] Initialized (Ablation: S2 Only)")
                 print(f"  Scale: {self.scale} ({config.num_hidden_layers} layers)")
                 print(f"  Aspect ratio: {'anyres' if self.anyres else 'pad'}")
-                print(f"  User passed T: {starvlm_config['T']}")
+                print(f"  User passed T: {tops_prototype_config['T']}")
                 print(f"  Expected input from Stage 1: {self.visual_token_length} tokens (all tokens, no THCP)")
                 print(f"  Stage 1: SKIPPED (no THCP)")
                 print(f"  Stage 2: Progressive pruning {self.visual_token_length} → {self.target_visual_tokens}")
                 print(f"  Pruning schedule: {self.pruning_schedule}")
                 print(f"{'='*80}\n")
-        elif self.mode == "star_v2":
-            # STAR-V2: Two-stage mode (Stage 1 gives 288 tokens, fixed 50%)
+        elif self.mode == "tops_variant2":
+            # TOPSPrototype-V2: Two-stage mode (Stage 1 gives 288 tokens, fixed 50%)
             self.visual_token_length = self.visual_token_length // 2
-            self.pruning_schedule = STAR_V2_SCHEDULE[self.scale][self.target_visual_tokens]
+            self.pruning_schedule = TOPS_VARIANT2_SCHEDULE[self.scale][self.target_visual_tokens]
             import os
             if os.environ.get('ENABLE_DEBUG', '0') == '1':
-                print(f"[STAR-V2 Stage 2] Initialized")
+                print(f"[TOPSPrototype-V2 Stage 2] Initialized")
                 print(f"  Scale: {self.scale}")
                 print(f"  Expected input from Stage 1: {self.visual_token_length} tokens")
                 print(f"  Stage 1 method: Self-similarity")
@@ -358,7 +358,7 @@ class STARVLMModel(LlamaModel):
             self.pruning_schedule = STAR_FASTV_SCHEDULE[self.scale][self.target_visual_tokens]
             import os
             if os.environ.get('ENABLE_DEBUG', '0') == '1':
-                print(f"[STAR-FastV] Initialized")
+                print(f"[TOPSPrototype-FastV] Initialized")
                 print(f"  Scale: {self.scale}")
                 print(f"  Target tokens: {self.target_visual_tokens}")
 
@@ -397,7 +397,7 @@ class STARVLMModel(LlamaModel):
         # ============ DEBUG: 追踪序列长度来源 ============
         if enable_debug and past_key_values is None:  # 只在 prefill 阶段打印
             print("\n" + "="*80)
-            print("🔍 [STAR-PRO DEBUG] Forward Input Analysis")
+            print("🔍 [TOPS-Experimental DEBUG] Forward Input Analysis")
             print("="*80)
             
             # 1. 检查输入来源
@@ -518,14 +518,14 @@ class STARVLMModel(LlamaModel):
 
             if self.mode == "cover_prune_2":
                 mode_name = "COVER-Prune-2 Stage 2"
-            elif self.mode == "star_pro":
-                mode_name = "STAR-PRO Stage 2"
-            elif self.mode == "star_v2":
-                mode_name = "STAR-V2 Stage 2"
-            elif self.mode == "star_v5":
-                mode_name = "STAR-V5 Stage 2"
+            elif self.mode == "tops_experimental":
+                mode_name = "TOPS-Experimental Stage 2"
+            elif self.mode == "tops_variant2":
+                mode_name = "TOPSPrototype-V2 Stage 2"
+            elif self.mode == "tops_variant5":
+                mode_name = "TOPSPrototype-V5 Stage 2"
             else:
-                mode_name = "STAR-FastV"
+                mode_name = "TOPSPrototype-FastV"
             if enable_debug:
                 print(f"[{mode_name}] Prefill: visual tokens = {self.current_visual_length}, target = {self.target_visual_tokens}")
 
@@ -540,8 +540,8 @@ class STARVLMModel(LlamaModel):
             self.layer_visual_tokens = []
 
         # DEBUG: Print forward pass info
-        if enable_debug and self.mode == "star_v5":
-            print(f"\n[STAR-V5 DEBUG] Forward pass: seq_length={seq_length}, prefill_done={self.prefill_done}, past_kv={'None' if past_key_values is None else 'exists'}")
+        if enable_debug and self.mode == "tops_variant5":
+            print(f"\n[TOPSPrototype-V5 DEBUG] Forward pass: seq_length={seq_length}, prefill_done={self.prefill_done}, past_kv={'None' if past_key_values is None else 'exists'}")
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -556,9 +556,9 @@ class STARVLMModel(LlamaModel):
                 self.layer_visual_tokens.append(self.current_visual_length)
 
             # Apply text-guided pruning at scheduled layers
-            # DEBUG: Check pruning conditions for STAR-V5
-            if enable_debug and self.mode == "star_v5" and layer_idx in [1, 3, 11, 23]:
-                print(f"[STAR-V5 DEBUG] Layer {layer_idx}: seq_len={seq_length}, prefill_done={self.prefill_done}, in_schedule={layer_idx in self.pruning_layers}")
+            # DEBUG: Check pruning conditions for TOPSPrototype-V5
+            if enable_debug and self.mode == "tops_variant5" and layer_idx in [1, 3, 11, 23]:
+                print(f"[TOPSPrototype-V5 DEBUG] Layer {layer_idx}: seq_len={seq_length}, prefill_done={self.prefill_done}, in_schedule={layer_idx in self.pruning_layers}")
 
             if seq_length > 1 and self.prefill_done and layer_idx in self.pruning_layers:
                 # Fix: Ensure visual_token_indices is on the same device as current layer for accelerate compatibility
@@ -573,14 +573,14 @@ class STARVLMModel(LlamaModel):
 
                     if self.mode == "cover_prune_2":
                         mode_name = "COVER-Prune-2 Stage 2"
-                    elif self.mode == "star_pro":
-                        mode_name = "STAR-PRO Stage 2"
-                    elif self.mode == "star_v2":
-                        mode_name = "STAR-V2 Stage 2"
-                    elif self.mode == "star_v5":
-                        mode_name = "STAR-V5 Stage 2"
+                    elif self.mode == "tops_experimental":
+                        mode_name = "TOPS-Experimental Stage 2"
+                    elif self.mode == "tops_variant2":
+                        mode_name = "TOPSPrototype-V2 Stage 2"
+                    elif self.mode == "tops_variant5":
+                        mode_name = "TOPSPrototype-V5 Stage 2"
                     else:
-                        mode_name = "STAR-FastV"
+                        mode_name = "TOPSPrototype-FastV"
                     if enable_debug:
                         print(f"\n[{mode_name}] Layer {layer_idx}: Pruning {self.current_visual_length} → {target_visual_length}")
 

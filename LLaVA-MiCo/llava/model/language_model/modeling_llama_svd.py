@@ -6,7 +6,7 @@ from transformers.models.llama.modeling_llama import LlamaModel, Cache, DynamicC
     _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-R_dict = { #这个是STAR_V2的配置
+R_dict = { #这个是TOPS_VARIANT2的配置
     "7b": {
         2: {
             192: 240,

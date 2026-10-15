@@ -4,7 +4,7 @@
     "kind": "video",
     "k": 12,
     "model_path": "lmms-lab/LLaVA-Video-7B-Qwen2",
-    "method": "attn_H_cov_proj_llm_12",
+    "method": "mico_projected_llm_12",
     "evidence": "source implementation; video absent from provided document main tables"
   }
 }

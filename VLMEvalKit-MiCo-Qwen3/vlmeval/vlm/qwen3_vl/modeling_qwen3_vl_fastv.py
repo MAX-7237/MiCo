@@ -108,7 +108,7 @@ class FastVQwen3VLModel(_BASE_MODEL_CLS):
         # `seq_length - 15 - 10` window was an 11-token shift that both protected 11 real image
         # tokens from pruning and made 11 real TEXT tokens deletable. The window is now pushed in
         # explicitly by the wrapper; see the reference rationale in
-        # qwen2_5_vl/modeling_qwen2_5_vl_starv3.py:61-65.
+        # qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py:61-65.
         self.visual_token_positions: Optional[torch.LongTensor] = None
         # Freshness flag, consumed by each prefill. Guards the one hazard the explicit-window design
         # introduces: a text-only sample that follows an image sample would otherwise inherit the
@@ -169,7 +169,7 @@ class FastVQwen3VLModel(_BASE_MODEL_CLS):
     def set_visual_token_positions(self, positions: Optional[torch.LongTensor]) -> None:
         """Absolute positions (in the post-stage-1 sequence) of the surviving image tokens.
 
-        One window API shared by fastv / star_v3 / tops. An explicit index vector -- not a
+        One window API shared by fastv / tops_variant3 / tops. An explicit index vector -- not a
         `(start, length)` offset -- because Qwen prompts do not guarantee that visual tokens begin
         at a fixed offset, and a multi-image prompt (model.py allows up to 24 images) is not a
         contiguous run at all.
@@ -577,7 +577,7 @@ class FastVQwen3VLModel(_BASE_MODEL_CLS):
                         deepstack_visual_embeds = [d[_surv] for d in deepstack_visual_embeds]
                     visual_pos_masks = visual_pos_masks[:, retain_token_indices]
 
-                # Re-map the window into the compacted sequence (reference qwen2_5_vl/..._starv3.py:510-512).
+                # Re-map the window into the compacted sequence (reference qwen2_5_vl/..._tops_variant3.py:510-512).
                 visual_positions = torch.searchsorted(retain_token_indices, kept_visual_abs)
                 self.visual_token_positions = visual_positions
                 self.retain_token_indices = retain_token_indices

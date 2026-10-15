@@ -45,7 +45,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_rotary_pos_
 
 from .modeling_qwen2_5_vl_fastv import FastVQwen2_5_VLModel
 # from .modeling_qwen2_5_vl_sparsevlm import SparseVLMQwen2_5_VLModel  # TODO: Implement SparseVLM
-from .modeling_qwen2_5_vl_starv3 import StarV3Qwen2_5_VLModel
+from .modeling_qwen2_5_vl_tops_variant3 import TOPSVariant3Qwen2_5_VLModel
 
 
 if is_flash_attn_available():
@@ -78,14 +78,14 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
             # TODO: Implement SparseVLM
             raise NotImplementedError("SparseVLM is not yet implemented for Qwen2.5-VL")
             # self.model = SparseVLMQwen2_5_VLModel(config, visual_token_num)
-        elif pruning_method == 'star_v3':
-            self.model = StarV3Qwen2_5_VLModel(config, visual_token_num)
+        elif pruning_method == 'tops_variant3':
+            self.model = TOPSVariant3Qwen2_5_VLModel(config, visual_token_num)
         else:
             self.model = Qwen2_5_VLModel(config)
 
         self.pruning_method = pruning_method
         self.target_visual_token_num = visual_token_num  # Original target (never changes)
-        self.visual_token_num = visual_token_num  # Runtime metric (gets updated by STAR-V3/FastV)
+        self.visual_token_num = visual_token_num  # Runtime metric (gets updated by TOPS-Variant3/FastV)
 
     def forward(
         self,
@@ -428,11 +428,11 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         image_attns[arithmetic_indices] = 0
                         selected_indices = image_attns.topk(self.target_visual_token_num//2, dim=-1).indices
                         selected_indices = torch.cat([selected_indices, arithmetic_indices])
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                     pruned_indices = selected_masks.float().topk(N-self.target_visual_token_num, dim=-1, largest=False).indices
-                    
+
                     selected_embeds = image_embeds[selected_indices]
                     selected_keys = image_keys[selected_indices]
                     selected_attns = image_attns[selected_indices]
@@ -450,7 +450,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                             selected_keys_norm[:i],
                             selected_keys_norm[i+1:],
                             pruned_keys_norm])
-                        
+
                         similarity = torch.matmul(center_key_norm, other_keys_norm.t())
                         cluster_indices = similarity.topk(32, dim=-1).indices
 
@@ -694,7 +694,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
                         distinct_indices = scores.argsort(dim=-1, descending=True)[r:]
                         residual_indices = torch.cat([residual_indices[::2][distinct_indices], residual_indices[1::2]])
-                    
+
                     selected_indices = torch.cat([important_indices, residual_indices])
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
@@ -767,7 +767,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                         di2s -= torch.square(eis)
                         di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method == 'trim_mean':
@@ -812,7 +812,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                         di2s -= torch.square(eis)
                         di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method == 'cdpruner_max':
@@ -837,15 +837,15 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                     di2s -= torch.square(eis)
                     di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method == 'sparsevlm':
                     selected_masks = torch.ones(N, dtype=torch.bool, device=device)
-                elif self.pruning_method == 'star_v3':
-                    # STAR-V3: Adaptive Two-Stage Text-Concept Hierarchical Pruning
+                elif self.pruning_method == 'tops_variant3':
+                    # TOPS-Variant3: Adaptive Two-Stage Text-Concept Hierarchical Pruning
                     print(f"\n{'='*80}")
-                    print(f"STAR-V3 Stage 1: THCP (Text-Concept Hierarchical Pruning)")
+                    print(f"TOPS-Variant3 Stage 1: THCP (Text-Concept Hierarchical Pruning)")
                     print(f"{'='*80}")
 
                     # Extract text embeddings from inputs_embeds
@@ -867,7 +867,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
                     # Fallback to attention-based if no text
                     if M == 0:
-                        print("[STAR-V3 Warning] No text embeddings found, using attention fallback")
+                        print("[TOPS-Variant3 Warning] No text embeddings found, using attention fallback")
                         image_attns = image_attns.mean(dim=1).mean(dim=0)
                         selected_indices = image_attns.topk(self.target_visual_token_num, dim=-1).indices
                         selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
@@ -928,7 +928,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                         selected_masks[selected_tensor] = True
 
-                        print(f"[STAR-V3 Stage1] selected_masks.sum = {selected_masks.sum().item()}")
+                        print(f"[TOPS-Variant3 Stage1] selected_masks.sum = {selected_masks.sum().item()}")
 
                         print(f"  Selected {selected_masks.sum().item()} visual tokens")
                         print(f"{'='*80}\n")
@@ -998,14 +998,14 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         visual_token_indices + system_prompt_length,
                         torch.arange(system_prompt_length+visual_token_length, inputs_embeds.shape[1], device=device),
                     ))
-                    print(f"[STAR-V3 Stage1] retain_token_indices length = {retain_token_indices.shape[0]}")
+                    print(f"[TOPS-Variant3 Stage1] retain_token_indices length = {retain_token_indices.shape[0]}")
                     self.retain_token_indices = retain_token_indices
 
                     inputs_embeds = inputs_embeds[:, retain_token_indices]
                     position_ids = position_ids[:, :, retain_token_indices]
                     attention_mask = attention_mask[:, retain_token_indices]
                     cache_position = cache_position[:retain_token_indices.shape[0]]
-            
+
             # then use the prev pre-calculated rope-deltas to get the correct position ids
             else:
                 batch_size, seq_length, _ = inputs_embeds.shape

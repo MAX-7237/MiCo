@@ -1,7 +1,7 @@
 # coding=utf-8
 """
 TOPS Stage 2: Progressive visual token pruning with RDC (Relevance-Diversity-Coverage)
-greedy selection for InternVL3, adapted from PrefixVLM_2 (modeling_llama_prefix_2.py).
+greedy selection for InternVL3, adapted from TOPS (modeling_llama_tops.py).
 
 Key design:
   - Relevance (R): attention importance computed via QKV probe on PRE-layer hidden_states
@@ -43,7 +43,7 @@ TOPS_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
 class TOPSQwen2Model(Qwen2Model):
     """
     TOPS Stage 2: Progressive RDC pruning inside Qwen2 decoder layers.
-    Mirrors the logic of Prefix_2_LlamaModel but adapted for Qwen2 (Flash Attention, GQA, RoPE).
+    Mirrors the logic of TOPS_LlamaModel but adapted for Qwen2 (Flash Attention, GQA, RoPE).
     """
 
     def __init__(self, config: Qwen2Config, tops_config: Dict):
@@ -60,10 +60,10 @@ class TOPSQwen2Model(Qwen2Model):
             logger.warning(f"Unknown scale with {config.num_hidden_layers} layers, defaulting to internvl3_8b")
 
         self.retained_num = tops_config["T"]
-        self.attn_h = bool(tops_config.get("attn_h", False))
+        self.mico = bool(tops_config.get("mico", False))
         self.dynamic_r = bool(tops_config.get("dynamic_r", False))
         self.visual_token_length = 0  # dynamically set per image by modeling_internvl_chat.py
-        # COVER_Prune_2 / attn_cov_vit_proj_llm_12: all-text rater + inner-weighted
+        # COVER_Prune_2 / mico_coverage_vit_proj_llm_12: all-text rater + inner-weighted
         # coverage. Env COVER_S2_INSIDE still works for the existing cp2 path.
         self.cover_s2_inside = bool(tops_config.get("cover_s2_inside", False)) or (
             os.environ.get("COVER_S2_INSIDE", "0") == "1"
@@ -76,7 +76,7 @@ class TOPSQwen2Model(Qwen2Model):
             self.pruning_layers: Dict[int, int] = {}
             logger.warning("tops_2 single-stage: in-LLM Stage-2 pruning DISABLED (pruning_layers = {})")
         elif tops_config.get("pruning_layers") is not None:
-            # attn_cov_vit_proj_llm_12: single TOPS-first-layer cut; T=64/32 are
+            # mico_coverage_vit_proj_llm_12: single TOPS-first-layer cut; T=64/32 are
             # not in TOPS_SCHEDULE and must not disable S2.
             self.pruning_layers = {int(k): int(v) for k, v in tops_config["pruning_layers"].items()}
         elif schedule is None:
@@ -143,7 +143,7 @@ class TOPSQwen2Model(Qwen2Model):
         if text_hidden.size(1) == 0:
             return hidden_states.new_tensor([hidden_states.shape[1] - 1], dtype=torch.long)
 
-        # COVER_Prune_2 / attn_cov_vit_proj_llm_12: all text tokens as raters
+        # COVER_Prune_2 / mico_coverage_vit_proj_llm_12: all text tokens as raters
         # (no >mean subset), matching Qwen CoverPrune2 all_text_attn.
         if getattr(self, "cover_s2_inside", False) or os.environ.get("COVER_S2_INSIDE", "0") == "1":
             return torch.arange(text_hidden.size(1), device=hidden_states.device, dtype=torch.long)
@@ -253,7 +253,7 @@ class TOPSQwen2Model(Qwen2Model):
         a2 = float(os.environ.get("A2", "1.0"))
         alpha_2 = float(os.environ.get("ALPHA_2", "1.0"))
         lambda_2 = float(os.environ.get("LAMBDA_2", "1.0"))
-        # COVER_Prune_2 / attn_cov_vit_proj_llm_12: inner-weighted coverage
+        # COVER_Prune_2 / mico_coverage_vit_proj_llm_12: inner-weighted coverage
         cover_inside = getattr(self, "cover_s2_inside", False) or (
             os.environ.get("COVER_S2_INSIDE", "0") == "1"
         )
@@ -265,7 +265,7 @@ class TOPSQwen2Model(Qwen2Model):
         attn = attn.detach()
         if attn.dim() == 1:
             attn = attn.unsqueeze(0)  # (1, V)
-        if self.attn_h:
+        if self.mico:
             if attn.shape[0] == 1 and B > 1:
                 attn = attn.expand(B, -1)
             if attn.shape != (B, V):

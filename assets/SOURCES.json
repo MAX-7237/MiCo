@@ -1,0 +1,55 @@
+{
+  "paper": "MiCo",
+  "figures": [
+    {
+      "asset": "method",
+      "source": "figures/Figure1_MiCo_editable_v68.pdf",
+      "sha256": "acbeeff702587ea0d5b0c56894af6489f6eea63ce500655fb5d2a6ab6949604a",
+      "conversion": "Original PDF page rasterized without redrawing",
+      "source_size_points": [
+        1350.1134033203125,
+        566.9007568359375
+      ]
+    },
+    {
+      "asset": "teaser-process",
+      "source": "figures/mico_teaser_process.pdf",
+      "sha256": "8be98462eb531035245c827d24732a315685db87b6d20e18105e8c7673c43b8a",
+      "conversion": "Original PDF page rasterized without redrawing",
+      "source_size_points": [
+        154.8000030517578,
+        161.0
+      ]
+    },
+    {
+      "asset": "teaser-results",
+      "source": "figures/mico_main_results_radar.pdf",
+      "sha256": "f681c5c6501a2e38c9e36a8c2ba54e271474712de58f9d32af751b2ecce5e275",
+      "conversion": "Original PDF page rasterized without redrawing",
+      "source_size_points": [
+        165.60000610351562,
+        176.39999389648438
+      ]
+    },
+    {
+      "asset": "teaser-efficiency",
+      "source": "figures/mico_teaser_efficiency.pdf",
+      "sha256": "244bc21558949f6a6e7572e28f2d1170d202051e460b61fccea4b4334c564886",
+      "conversion": "Original PDF page rasterized without redrawing",
+      "source_size_points": [
+        136.8000030517578,
+        139.67999267578125
+      ]
+    },
+    {
+      "asset": "efficiency",
+      "source": "figures/mico_pareto_breakdown_next7b_video.pdf",
+      "sha256": "57ff37d37790866fe7b6abaac465936c3891f37ea6b345aed39c1cdbcc6d3ecc",
+      "conversion": "Original PDF page rasterized without redrawing",
+      "source_size_points": [
+        514.4945678710938,
+        292.0950012207031
+      ]
+    }
+  ]
+}

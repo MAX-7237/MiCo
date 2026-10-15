@@ -43,11 +43,11 @@ class ImageBaseDataset:
         self.img_root = osp.join(ROOT, 'images', img_root_map(dataset))
 
         data = self.load_data(dataset)
-        smoke_rows = int(os.environ.get('STARPRO_SMOKE_ROWS', '0'))
+        smoke_rows = int(os.environ.get('TOPS_EXPERIMENTAL_SMOKE_ROWS', '0'))
         if smoke_rows > 0:
             data = data.iloc[:smoke_rows].copy()
             print(
-                f'[STARPRO SMOKE DATA] dataset={dataset} rows={len(data)}',
+                f'[TOPS_EXPERIMENTAL SMOKE DATA] dataset={dataset} rows={len(data)}',
                 flush=True,
             )
         self.skip_noimg = skip_noimg

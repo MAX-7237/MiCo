@@ -9,7 +9,7 @@ where text_attn averages attention from all tokens AFTER the visual span
 (sys prompt cannot attend to visuals under the causal mask), and kappa is
 nonnegative cosine similarity of layer-K visual hidden states.
 
-Also used by merge_attn_cov_llm: after mm_projector, keep 2T CLS-pivots
+Also used by merge_mico_coverage_llm: after mm_projector, keep 2T CLS-pivots
 and mean-merge leftovers onto the nearest pivot, then FastV-layer coverage
 prune so the layer-average budget is T.
 """
@@ -103,11 +103,11 @@ def inner_weighted_raw_cls_select(
     raw_cls_attn: torch.Tensor,
     keep: int,
     coverage_only: bool = False,
-    attn_h: bool = False,
+    mico: bool = False,
 ) -> torch.Tensor:
     """Greedy keep-`keep` by sum_v w_v * max(0, kappa(v,i) - m_v).
 
-    Default w = raw CLS (no min-max). coverage_only: w=1. attn_h: multiply
+    Default w = raw CLS (no min-max). coverage_only: w=1. mico: multiply
     by ||h||_2 of `features` (the hidden state at this prune site).
     kappa is nonnegative cosine of `features`.
     Returns a boolean mask of length N.
@@ -120,7 +120,7 @@ def inner_weighted_raw_cls_select(
         w = torch.ones(n_tokens, device=features.device, dtype=torch.float32)
     else:
         w = raw_cls_attn.float().clamp(min=0.0)
-        if attn_h:
+        if mico:
             # S1 prune site is CLIP visual tokens; |h| = their L2.
             w = w * features.float().norm(dim=-1).clamp(min=0.0)
     device = features.device
@@ -143,8 +143,8 @@ def inner_weighted_raw_cls_select(
     return mask
 
 
-# 4-region S1 (attn_cov_proj_llm_4regions_sg). Total keep stays 2T so the
-# comparison with attn_cov_proj_llm_2 is only "where the 2T sit", not FLOPs.
+# 4-region S1 (mico_coverage_proj_llm_4regions_sg). Total keep stays 2T so the
+# comparison with mico_coverage_proj_llm_2 is only "where the 2T sit", not FLOPs.
 _REGION_GRID = 2
 _REGION_G = _REGION_GRID * _REGION_GRID
 _REGION_LAMBDA = 0.5  # half uniform; λ=1 lets one high-s_g quadrant dominate
@@ -155,7 +155,7 @@ _REGION_MIN_DENOM = 3  # k_min = max(2, floor(2T / (3G)))
 # and the pool never exceeds the 2T arm already on the table.
 _ENTROPY_ALPHA_MIN = 0.5
 _ENTROPY_ALPHA_MAX = 1.0
-# prefixvlm_2 S2 keep table (exact post-layer count, not FastV dynamic_R).
+# tops S2 keep table (exact post-layer count, not FastV dynamic_R).
 # 7B uses 12/24; 13B uses 15/30. T=192 on 7B is a 3-locus schedule and is
 # not in this table — that budget is not comparable to the 12/24 arm.
 _PREFIX2_KEEP = {
@@ -198,7 +198,7 @@ def n1_from_cls_entropy(t: int, h_norm: float, n_tokens: int) -> int:
 
 
 def prefix2_keep_count(scale: str, t_budget: int, layer_1b: int, anyres: bool) -> int:
-    """prefixvlm_2 keep at a 1-based prune layer. anyres multiplies by 5.
+    """tops keep at a 1-based prune layer. anyres multiplies by 5.
 
     Table keys are nominal T (128/64/32). NeXT allbench already passes the
     5× budget (640/320/160); divide by 5 before lookup so anyres does not
@@ -209,7 +209,7 @@ def prefix2_keep_count(scale: str, t_budget: int, layer_1b: int, anyres: bool) -
         table = _PREFIX2_KEEP[scale][int(layer_1b)]
     except KeyError as exc:
         raise KeyError(
-            f"prefixvlm_2 keep missing for scale={scale} T={t_budget} L{layer_1b}"
+            f"tops keep missing for scale={scale} T={t_budget} L{layer_1b}"
         ) from exc
     if t_key not in table and anyres and t_key % 5 == 0 and (t_key // 5) in table:
         t_key = t_key // 5
@@ -217,7 +217,7 @@ def prefix2_keep_count(scale: str, t_budget: int, layer_1b: int, anyres: bool) -
         keep = int(table[t_key])
     except KeyError as exc:
         raise KeyError(
-            f"prefixvlm_2 keep missing for scale={scale} T={t_budget} L{layer_1b}"
+            f"tops keep missing for scale={scale} T={t_budget} L{layer_1b}"
         ) from exc
     if anyres:
         keep *= 5
@@ -445,25 +445,25 @@ def post_visual_text_attn(
     return text_attn
 
 
-def attn_cov_llm_select(
+def mico_coverage_llm_select(
     last_attention: torch.Tensor,
     hidden_states: torch.Tensor,
     system_prompt_length: int,
     visual_token_length: int,
     keep: int,
     coverage_only: bool = False,
-    attn_h: bool = False,
+    mico: bool = False,
     sim_cov: bool = False,
     anti_sim_cov: bool = False,
     last_token: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Greedy select visual tokens by weighted coverage.
 
-    attn_cov_llm: w_v = mean post-visual text attention (L1-normalized).
+    mico_coverage_llm: w_v = mean post-visual text attention (L1-normalized).
     last_token: w_v = last-query-token attention onto visuals (L1-normalized).
-        Used by last_attn_cov_proj_llm_2; FastV-style single query, not mean text.
+        Used by last_mico_coverage_proj_llm_2; FastV-style single query, not mean text.
     cov_llm (coverage_only): w_v = 1/V.
-    attn_h_cov_llm: w_v = text_attn[v] * ||h_v||_2, then L1-normalize.
+    mico_weighted_llm: w_v = text_attn[v] * ||h_v||_2, then L1-normalize.
     sim_cov_llm: w_v = sum over ALL non-visual text tokens of
         [cos(h_t, h_v)]_+, then L1-normalize. Not attention: hidden-state
         cosine, including the system prompt (user: all_text_to_visual).
@@ -534,7 +534,7 @@ def attn_cov_llm_select(
             text_attn = attn[-1, vis_start:vis_end]
 
         text_attn = text_attn.float().clamp(min=0.0)
-        if attn_h:
+        if mico:
             # |h_v| is the raw hidden L2 of visual token v (before cosine norm).
             text_attn = text_attn * feats_raw.norm(dim=-1).clamp(min=0.0)
         weight_sum = text_attn.sum()
@@ -565,18 +565,18 @@ def attn_cov_llm_select(
     return visual_token_index, text_attn.detach()
 
 
-class AttnCovLLMLlamaModel(LlamaModel):
+class MiCoCoverageLLMLlamaModel(LlamaModel):
     """LlamaModel with Attn-Cov-LLM pruning at layer K (FastV location).
 
     Config keys:
       K: prune after this layer index (1-based FastV convention; default 2)
-      R / T: fixed keep count when dynamic_R is False (attn_cov_llm)
+      R / T: fixed keep count when dynamic_R is False (mico_coverage_llm)
       T_avg / T: target layer-average visual count when dynamic_R is True
       dynamic_R: if True, recompute R from T_avg, N, K, L each forward
-      merge_threshold: stored for encode_images (merge_attn_cov_llm only)
+      merge_threshold: stored for encode_images (merge_mico_coverage_llm only)
     """
 
-    def __init__(self, config: LlamaConfig, attn_cov_llm_config: Dict, **kwargs):
+    def __init__(self, config: LlamaConfig, mico_coverage_llm_config: Dict, **kwargs):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
@@ -596,23 +596,23 @@ class AttnCovLLMLlamaModel(LlamaModel):
             self.visual_token_length = 576
             self.anyres = False
 
-        self.K = int(attn_cov_llm_config.get("K", 2))
-        self.K2 = int(attn_cov_llm_config.get("K2", 0))
-        prune_layers = attn_cov_llm_config.get("prune_layers")
+        self.K = int(mico_coverage_llm_config.get("K", 2))
+        self.K2 = int(mico_coverage_llm_config.get("K2", 0))
+        prune_layers = mico_coverage_llm_config.get("prune_layers")
         if prune_layers is not None:
             self.prune_layers = [int(x) for x in prune_layers]
         elif self.K2 > 0:
             self.prune_layers = [self.K, self.K2]
         else:
             self.prune_layers = [self.K]
-        self.adaptive_r2 = bool(attn_cov_llm_config.get("adaptive_r2", False))
-        self.dynamic_R = bool(attn_cov_llm_config.get("dynamic_R", False))
-        # Exact prefixvlm_2 (L, T) keep, not layer-average R. Isolates "same
+        self.adaptive_r2 = bool(mico_coverage_llm_config.get("adaptive_r2", False))
+        self.dynamic_R = bool(mico_coverage_llm_config.get("dynamic_R", False))
+        # Exact tops (L, T) keep, not layer-average R. Isolates "same
         # attn×coverage select, different prune locus / keep table".
-        self.prefix2_keep = bool(attn_cov_llm_config.get("prefix2_keep", False))
+        self.prefix2_keep = bool(mico_coverage_llm_config.get("prefix2_keep", False))
         # Single-prune sibling of 12_24: same first locus (7B L12 / 13B L15),
         # but keep is FastV-style average T, not the prefix2 keep table.
-        self.prefix2_first = bool(attn_cov_llm_config.get("prefix2_first", False))
+        self.prefix2_first = bool(mico_coverage_llm_config.get("prefix2_first", False))
         if self.prefix2_keep and self.prefix2_first:
             raise ValueError("prefix2_keep and prefix2_first are mutually exclusive")
         if self.prefix2_keep:
@@ -629,21 +629,21 @@ class AttnCovLLMLlamaModel(LlamaModel):
             self.K2 = 0
             self.prune_layers = [self.K]
         self.T_avg = int(
-            attn_cov_llm_config.get(
+            mico_coverage_llm_config.get(
                 "T_avg",
-                attn_cov_llm_config.get("T", attn_cov_llm_config.get("R", 128)),
+                mico_coverage_llm_config.get("T", mico_coverage_llm_config.get("R", 128)),
             )
         )
-        self.merge_threshold = float(attn_cov_llm_config.get("merge_threshold", 0.9))
-        self.coverage_only = bool(attn_cov_llm_config.get("coverage_only", False))
-        self.attn_h = bool(attn_cov_llm_config.get("attn_h", False))
-        self.sim_cov = bool(attn_cov_llm_config.get("sim_cov", False))
-        self.anti_sim_cov = bool(attn_cov_llm_config.get("anti_sim_cov", False))
-        self.last_token = bool(attn_cov_llm_config.get("last_token", False))
-        if "R" in attn_cov_llm_config:
-            self.R = int(attn_cov_llm_config["R"])
+        self.merge_threshold = float(mico_coverage_llm_config.get("merge_threshold", 0.9))
+        self.coverage_only = bool(mico_coverage_llm_config.get("coverage_only", False))
+        self.mico = bool(mico_coverage_llm_config.get("mico", False))
+        self.sim_cov = bool(mico_coverage_llm_config.get("sim_cov", False))
+        self.anti_sim_cov = bool(mico_coverage_llm_config.get("anti_sim_cov", False))
+        self.last_token = bool(mico_coverage_llm_config.get("last_token", False))
+        if "R" in mico_coverage_llm_config:
+            self.R = int(mico_coverage_llm_config["R"])
         else:
-            self.R = int(attn_cov_llm_config.get("T", self.T_avg))
+            self.R = int(mico_coverage_llm_config.get("T", self.T_avg))
 
     def update_runtime_visual_length(self, n_visual: int) -> int:
         """Set N entering the LLM (after merge) and refresh R if dynamic."""
@@ -814,28 +814,28 @@ class AttnCovLLMLlamaModel(LlamaModel):
                             )
                             self.R = keep_r
                             if getattr(self, "prefix2_first", False) or self.K == 12:
-                                log_i = getattr(self, "_attn_cov_12_log_i", 0)
+                                log_i = getattr(self, "_mico_coverage_12_log_i", 0)
                                 enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
                                 if log_i == 0 or (enable_debug and log_i < 8):
                                     print(
-                                        f"[attn_cov_proj_llm_12] sample={log_i} "
+                                        f"[mico_coverage_proj_llm_12] sample={log_i} "
                                         f"L{layer_1b} N={orig_visual_len} T={self.T_avg} "
                                         f"keep={keep_r} (S2=text_attn*coverage, "
                                         f"R=(T*L-K*2T)/(L-K))",
                                         flush=True,
                                     )
-                                self._attn_cov_12_log_i = log_i + 1
+                                self._mico_coverage_12_log_i = log_i + 1
                         else:
                             keep_r = int(self.R)
 
-                        visual_token_index, text_attn = attn_cov_llm_select(
+                        visual_token_index, text_attn = mico_coverage_llm_select(
                             last_attention=last_attention,
                             hidden_states=hidden_states,
                             system_prompt_length=self.system_prompt_length,
                             visual_token_length=orig_visual_len,
                             keep=keep_r,
                             coverage_only=self.coverage_only,
-                            attn_h=self.attn_h,
+                            mico=self.mico,
                             sim_cov=self.sim_cov,
                             anti_sim_cov=self.anti_sim_cov,
                             last_token=self.last_token,
@@ -868,12 +868,12 @@ class AttnCovLLMLlamaModel(LlamaModel):
                         position_ids = full_token_index.unsqueeze(0)
                         layer_outputs = (hidden_states, layer_outputs[2])
                         if self.adaptive_r2:
-                            log_i = getattr(self, "_attn_cov_2_log_i", 0)
+                            log_i = getattr(self, "_mico_coverage_2_log_i", 0)
                             enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
                             if layer_1b == self.prune_layers[0]:
                                 if log_i == 0 or (enable_debug and log_i < 8):
                                     print(
-                                        f"[attn_cov_llm_2] sample={log_i} prune=attn_cov "
+                                        f"[mico_coverage_llm_2] sample={log_i} prune=mico_coverage "
                                         f"L{layer_1b} N={n_enter} T={self.T_avg} L_llm={n_layers} "
                                         f"entropy={float(getattr(self, '_r2_entropy', 0)):.4f} "
                                         f"R2_band=[{self._r2_band[0]},{self._r2_band[1]}] "
@@ -890,26 +890,26 @@ class AttnCovLLMLlamaModel(LlamaModel):
                                 ) / float(n_layers)
                                 if log_i == 0 or (enable_debug and log_i < 8):
                                     print(
-                                        f"[attn_cov_llm_2] sample={log_i} prune=attn_cov "
+                                        f"[mico_coverage_llm_2] sample={log_i} prune=mico_coverage "
                                         f"L{layer_1b} R2={r2} R6={r6} drop={r2 - r6} "
                                         f"realized_avg={realized:.2f} target_T={self.T_avg} "
                                         f"(same attn*coverage select)",
                                         flush=True,
                                     )
-                                self._attn_cov_2_log_i = log_i + 1
+                                self._mico_coverage_2_log_i = log_i + 1
                         elif self.prefix2_keep:
-                            log_i = getattr(self, "_attn_cov_1224_log_i", 0)
+                            log_i = getattr(self, "_mico_coverage_1224_log_i", 0)
                             enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
                             if log_i == 0 or (enable_debug and log_i < 8):
                                 print(
-                                    f"[attn_cov_proj_llm_12_24] sample={log_i} "
+                                    f"[mico_coverage_proj_llm_12_24] sample={log_i} "
                                     f"L{layer_1b} N={orig_visual_len} T={self.T_avg} "
                                     f"keep={keep_r} loc={self.prune_layers} "
-                                    f"(S2=text_attn*coverage, prefixvlm_2 keep table)",
+                                    f"(S2=text_attn*coverage, tops keep table)",
                                     flush=True,
                                 )
                             if layer_1b == self.prune_layers[-1]:
-                                self._attn_cov_1224_log_i = log_i + 1
+                                self._mico_coverage_1224_log_i = log_i + 1
 
                     else:
                         layer_outputs = decoder_layer(

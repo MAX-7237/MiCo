@@ -1,0 +1,28 @@
+{
+  "overleaf_commit": "2ed07c1",
+  "tables": [
+    {
+      "asset": "results-table",
+      "source": "tables/other-models-summary.tex",
+      "compiled_page": 7,
+      "crop_points": [
+        103,
+        77,
+        512,
+        239
+      ]
+    },
+    {
+      "asset": "next13b-table",
+      "source": "tables/llava-next-13b-main.tex",
+      "compiled_page": 6,
+      "crop_points": [
+        103,
+        349,
+        510,
+        614
+      ]
+    }
+  ],
+  "conversion": "Cropped from compiled original LaTeX; no table data or layout redrawn. TOPS build passes table option to xcolor before loading acl."
+}

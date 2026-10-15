@@ -171,8 +171,8 @@ class LlavaVid(lmms):
         sparsevlm_config = {"T": visual_token_num}
         use_pdrop = True if pruning_method == "pdrop" else False
         pdrop_config = {"T": visual_token_num}
-        use_starv3 = True if pruning_method == "star_v3" else False
-        starv3_config = {"T": visual_token_num, "model_size": "7b"}
+        use_tops_variant3 = True if pruning_method == "tops_variant3" else False
+        tops_variant3_config = {"T": visual_token_num, "model_size": "7b"}
         use_tops = True if pruning_method == "tops" else False
         tops_config = {"T": visual_token_num, "model_size": "7b"}
 
@@ -219,7 +219,7 @@ class LlavaVid(lmms):
                 use_fastv=use_fastv, fastv_config=fastv_config,
                 use_sparsevlm=use_sparsevlm, sparsevlm_config=sparsevlm_config,
                 use_pdrop=use_pdrop, pdrop_config=pdrop_config,
-                use_starv3=use_starv3, starv3_config=starv3_config,
+                use_tops_variant3=use_tops_variant3, tops_variant3_config=tops_variant3_config,
                 use_tops=use_tops, tops_config=tops_config,
             )
         else:
@@ -229,7 +229,7 @@ class LlavaVid(lmms):
                 use_fastv=use_fastv, fastv_config=fastv_config,
                 use_sparsevlm=use_sparsevlm, sparsevlm_config=sparsevlm_config,
                 use_pdrop=use_pdrop, pdrop_config=pdrop_config,
-                use_starv3=use_starv3, starv3_config=starv3_config,
+                use_tops_variant3=use_tops_variant3, tops_variant3_config=tops_variant3_config,
                 use_tops=use_tops, tops_config=tops_config,
             )
 

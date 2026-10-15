@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MiCo launcher: maps public model names onto original, verified method IDs."""
+"""MiCo launcher: maps model names onto MiCo configurations."""
 import argparse,json,os,shlex,subprocess,sys
 from pathlib import Path
 root=Path(__file__).resolve().parent
@@ -23,7 +23,7 @@ if a.tokens<=0 or a.nproc<=0:p.error('tokens and nproc must be positive')
 m=profiles[a.model];method=m['method']
 if a.variant=='mico-s1':
  if m['kind']=='video':p.error('Video S1-only alias has not been verified')
- method='attn_H_cov_vit_proj'
+ method='mico_s1'
 env=os.environ.copy()
 paths=[str(root)]
 if m['kind']=='video':paths.insert(0,str(root/'lmms-eval'))
@@ -40,7 +40,7 @@ else:
  if not a.dataset:p.error('--dataset is required')
  model_args='pretrained='+ (a.model_path or m['model_path'])+',conv_template=qwen_1_5,max_frames_num=64,pruning_method='+method+',visual_token_num='+str(a.tokens)
  cmd=[sys.executable,'-m','accelerate.commands.launch','--num_processes',str(a.nproc),'--main_process_port',str(a.port),'-m','lmms_eval','--model','llava_vid','--model_args',model_args,'--tasks',a.dataset,'--batch_size','1','--log_samples','--output_path',a.work_dir]
-print('MiCo original method:',method,flush=True)
+print('MiCo method:',method,flush=True)
 print('Working directory:',root,flush=True)
 print(shlex.join(cmd),flush=True)
 if not a.dry_run:

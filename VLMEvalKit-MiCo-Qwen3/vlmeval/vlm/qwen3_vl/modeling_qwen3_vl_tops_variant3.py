@@ -1,7 +1,7 @@
 # coding=utf-8
 """
-StarV3 Stage 2 for Qwen3-VL: Progressive three-step pruning with text-guided RDC selection.
-Adapted from modeling_qwen2_5_vl_starv3.py (the algorithm ground truth).
+TOPSVariant3 Stage 2 for Qwen3-VL: Progressive three-step pruning with text-guided RDC selection.
+Adapted from modeling_qwen2_5_vl_tops_variant3.py (the algorithm ground truth).
 
 REBUILD 2026-07-24 (branch qwen3vl-rebuild-20260724).  Every patch below was located by
 unique text, never by line number (the rebuild plan's line numbers are known-wrong).
@@ -21,11 +21,11 @@ unique text, never by line number (the rebuild plan's line numbers are known-wro
       first image token sits at index 4, so the old slice protected 11 image tokens from
       pruning and made 11 real text tokens deletable.  Rationale for an index vector over
       a (start, length) offset is the reference's own, verbatim:
-      qwen2_5_vl/modeling_qwen2_5_vl_starv3.py -- "Qwen prompts do not guarantee that
+      qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py -- "Qwen prompts do not guarantee that
       visual tokens begin at a fixed offset".
   P8  The importance probe is now Qwen3's attention: q_norm/k_norm applied before RoPE,
       head/kv-head counts derived from the projections, `self_attn.scaling` for the scale.
-  P9  36-layer budget schedule (see STAR_V3_SCHEDULE below) + the `_compute_schedule_average`
+  P9  36-layer budget schedule (see TOPS_VARIANT3_SCHEDULE below) + the `_compute_schedule_average`
       accounting fix (a prune layer executes at its PRE-prune count).
   P12 `seq_length > 1` prefill guard on `should_prune`.
 """
@@ -70,11 +70,11 @@ def _debug_enabled() -> bool:
 # the identical accounting, e.g. `# initial=1024, (1024x12+281x4+77x12)/28=512`.
 #
 # To evaluate a different convention later, set the env var named by
-# STAR_V3_BUDGET_CONVENTION_ENV (or pass `convention=` to `get_star_v3_schedule`).  No
+# TOPS_VARIANT3_BUDGET_CONVENTION_ENV (or pass `convention=` to `get_tops_variant3_schedule`).  No
 # decoder code has to change: only the table lookup below is affected.
 #
-STAR_V3_BUDGET_CONVENTION_DEFAULT = "avg"
-STAR_V3_BUDGET_CONVENTION_ENV = "STARPRO_STARV3_BUDGET"
+TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT = "avg"
+TOPS_VARIANT3_BUDGET_CONVENTION_ENV = "TOPS_EXPERIMENTAL_TOPSVariant3_BUDGET"
 
 # --------------------------------------------------------------------------------------
 # DEFAULT table -- "avg" (average-over-layers) convention.
@@ -82,7 +82,7 @@ STAR_V3_BUDGET_CONVENTION_ENV = "STARPRO_STARV3_BUDGET"
 # Rows are [(prune_at_1based_layer, target_tokens), ...]; a layer executes at its
 # PRE-prune count (probe -> run layer -> prune), and `layer_idx` is 1-based
 # (`decoder_layer.self_attn.layer_idx + 1`).
-STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "7b": {
         # Qwen2.5-VL-7B (28 layers) -- unchanged, mirrors the ground-truth reference.
         # Stages 12 | 4 | 12  =>  12*2T + 4a + 12b = 28T  <=>  a + 3b = T
@@ -131,11 +131,11 @@ STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
 # ~1.45T per layer (2a+5b = 3760/1880/960 against the required 1024/512/256).  Recorded
 # so the old numbers stay reproducible, not because either convention is endorsed here.
 #
-# NOTE: a *strictly* flat T-in-every-layer schedule is not expressible for STAR-Pro at
+# NOTE: a *strictly* flat T-in-every-layer schedule is not expressible for TOPSPrototype-Pro at
 # all, because stage 1 keeps min(2T, N) for the first 15 layers by construction; making
 # it flat would be a method change, not a reporting change (rebuild plan §4.1).
 # --------------------------------------------------------------------------------------
-STAR_V3_SCHEDULE_FLAT_FINAL: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE_FLAT_FINAL: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "8b": {
         512: [(15, 600), (21, 512)],
         256: [(15, 300), (21, 256)],
@@ -143,13 +143,13 @@ STAR_V3_SCHEDULE_FLAT_FINAL: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     },
 }
 
-STAR_V3_SCHEDULE_TABLES: Dict[str, Dict[str, Dict[int, List[Tuple[int, int]]]]] = {
-    "avg": STAR_V3_SCHEDULE,
-    "flat_final": STAR_V3_SCHEDULE_FLAT_FINAL,
+TOPS_VARIANT3_SCHEDULE_TABLES: Dict[str, Dict[str, Dict[int, List[Tuple[int, int]]]]] = {
+    "avg": TOPS_VARIANT3_SCHEDULE,
+    "flat_final": TOPS_VARIANT3_SCHEDULE_FLAT_FINAL,
 }
 
 # Schedule-only ablation for Qwen3-VL-8B. Keep the same alpha=2 global QR
-# stage 1 and STAR-Pro average_all stage 2, but delay the first decoder prune
+# stage 1 and TOPSPrototype-Pro average_all stage 2, but delay the first decoder prune
 # from layer 12 to layer 14. The 2:1 post-prune ratio and exact layer-average
 # budget are both preserved:
 #   (14*256 + 10*64 + 12*32) / 36 = 128.
@@ -162,40 +162,40 @@ LLAVA_ALIGNED_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
 
 def resolve_budget_convention() -> str:
     """Which schedule table to use.  Default never changes without a human setting the env var."""
-    convention = os.environ.get(STAR_V3_BUDGET_CONVENTION_ENV, STAR_V3_BUDGET_CONVENTION_DEFAULT)
-    convention = (convention or STAR_V3_BUDGET_CONVENTION_DEFAULT).strip().lower()
-    if convention not in STAR_V3_SCHEDULE_TABLES:
+    convention = os.environ.get(TOPS_VARIANT3_BUDGET_CONVENTION_ENV, TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT)
+    convention = (convention or TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT).strip().lower()
+    if convention not in TOPS_VARIANT3_SCHEDULE_TABLES:
         logger.warning_once(
             "Unknown %s=%r; falling back to %r. Known conventions: %s",
-            STAR_V3_BUDGET_CONVENTION_ENV, convention,
-            STAR_V3_BUDGET_CONVENTION_DEFAULT, sorted(STAR_V3_SCHEDULE_TABLES),
+            TOPS_VARIANT3_BUDGET_CONVENTION_ENV, convention,
+            TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT, sorted(TOPS_VARIANT3_SCHEDULE_TABLES),
         )
-        convention = STAR_V3_BUDGET_CONVENTION_DEFAULT
+        convention = TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT
     return convention
 
 
-def get_star_v3_schedule(
+def get_tops_variant3_schedule(
     scale: str,
     target_visual_tokens: int,
     convention: Optional[str] = None,
 ) -> Tuple[Optional[List[Tuple[int, int]]], str]:
     """Return (schedule_rows, convention_actually_used) for `scale` / `target_visual_tokens`."""
     convention = convention or resolve_budget_convention()
-    schedule = STAR_V3_SCHEDULE_TABLES[convention].get(scale, {}).get(target_visual_tokens)
-    if schedule is None and convention != STAR_V3_BUDGET_CONVENTION_DEFAULT:
+    schedule = TOPS_VARIANT3_SCHEDULE_TABLES[convention].get(scale, {}).get(target_visual_tokens)
+    if schedule is None and convention != TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT:
         logger.warning_once(
             "No %r schedule for scale=%s target=%s; falling back to the %r table.",
-            convention, scale, target_visual_tokens, STAR_V3_BUDGET_CONVENTION_DEFAULT,
+            convention, scale, target_visual_tokens, TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT,
         )
-        convention = STAR_V3_BUDGET_CONVENTION_DEFAULT
-        schedule = STAR_V3_SCHEDULE_TABLES[convention].get(scale, {}).get(target_visual_tokens)
+        convention = TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT
+        schedule = TOPS_VARIANT3_SCHEDULE_TABLES[convention].get(scale, {}).get(target_visual_tokens)
     return schedule, convention
 
 
-class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
+class TOPSVariant3Qwen3VLModel(_BASE_MODEL_CLS):
     """
-    STAR-V3 stage-2 for Qwen3-VL: progressive text-guided token pruning inside LLM layers.
-    Adapted from StarV3Qwen2_5_VLModel.  Assumes Stage-1 has already reduced the visual
+    TOPS-Variant3 stage-2 for Qwen3-VL: progressive text-guided token pruning inside LLM layers.
+    Adapted from TOPSVariant3Qwen2_5_VLModel.  Assumes Stage-1 has already reduced the visual
     tokens to about `2 x target_visual_tokens` and has pushed their absolute positions via
     `set_visual_token_positions`.
     """
@@ -220,7 +220,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
         # Qwen2.5-VL -- an 11-token window shift that both protected 11 real image tokens
         # from pruning and made 11 real TEXT tokens deletable.  The window is pushed in
         # explicitly by the wrapper instead; see the reference rationale in
-        # qwen2_5_vl/modeling_qwen2_5_vl_starv3.py.
+        # qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py.
         self.visual_token_positions: Optional[torch.LongTensor] = None
 
         # Nominal Stage-0 token count, used ONLY for budget bookkeeping before the first
@@ -255,7 +255,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
         self.text_agg_mode = (text_agg_mode or "multi_token").strip().lower()
         if self.text_agg_mode not in ("multi_token", "average_all"):
             raise ValueError(
-                f"Unsupported STAR-V3 text_agg_mode={self.text_agg_mode!r}; "
+                f"Unsupported TOPS-Variant3 text_agg_mode={self.text_agg_mode!r}; "
                 "expected 'multi_token' or 'average_all'."
             )
 
@@ -264,32 +264,32 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
             self.budget_convention = "avg"
             if schedule is None:
                 raise ValueError(
-                    "LLaVA-aligned STAR-Pro schedule is only calibrated for "
+                    "LLaVA-aligned TOPSPrototype-Pro schedule is only calibrated for "
                     f"Qwen3-VL-8B T=128, got scale={self.scale!r} "
                     f"target={self.target_visual_tokens}."
                 )
         elif self.schedule_variant == "native":
-            schedule, self.budget_convention = get_star_v3_schedule(
+            schedule, self.budget_convention = get_tops_variant3_schedule(
                 self.scale, self.target_visual_tokens
             )
         else:
             raise ValueError(
-                f"Unsupported STAR-V3 schedule_variant={self.schedule_variant!r}."
+                f"Unsupported TOPS-Variant3 schedule_variant={self.schedule_variant!r}."
             )
 
         if schedule is None:
             self.pruning_layers: Dict[int, int] = {}
             if visual_token_num > 0:
                 logger.warning_once(
-                    "STAR-V3 schedule missing for target %s on scale %s. Progressive pruning disabled.",
+                    "TOPS-Variant3 schedule missing for target %s on scale %s. Progressive pruning disabled.",
                     visual_token_num, self.scale,
                 )
         else:
             self.pruning_layers = {layer_idx: target for layer_idx, target in schedule}
 
-        print(f"[STAR-V3 Init] Qwen3-VL scale={self.scale} ({n_layers} layers), "
+        print(f"[TOPS-Variant3 Init] Qwen3-VL scale={self.scale} ({n_layers} layers), "
               f"target={self.target_visual_tokens}, budget_convention={self.budget_convention} "
-              f"(env {STAR_V3_BUDGET_CONVENTION_ENV}, default {STAR_V3_BUDGET_CONVENTION_DEFAULT}), "
+              f"(env {TOPS_VARIANT3_BUDGET_CONVENTION_ENV}, default {TOPS_VARIANT3_BUDGET_CONVENTION_DEFAULT}), "
               f"schedule_variant={self.schedule_variant}, text_agg_mode={self.text_agg_mode}, "
               f"pruning_layers={self.pruning_layers}, deepstack={'on' if _USING_QWEN3 else 'n/a'}")
 
@@ -422,7 +422,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
         num_kv_heads = self_attn.k_proj.out_features // head_dim
 
         if _debug_enabled():
-            print(f"    [STAR-V3 probe] bsz={bsz} seq_len={seq_len} heads={num_heads} "
+            print(f"    [TOPS-Variant3 probe] bsz={bsz} seq_len={seq_len} heads={num_heads} "
                   f"kv_heads={num_kv_heads} head_dim={head_dim} visual={visual_positions.numel()}")
 
         # P8: Qwen3 applies per-head RMSNorm to q and k BEFORE RoPE and before the
@@ -456,7 +456,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
         key_states = (key_states * cos) + (self._rotate_half(key_states) * sin)
 
         if self.text_agg_mode == "average_all":
-            # Match LLaVA STAR-Pro's TEXT_AGG_MODE=average_all exactly: every
+            # Match LLaVA TOPSPrototype-Pro's TEXT_AGG_MODE=average_all exactly: every
             # text token after the visual block rates every visual token. Prefix
             # template tokens before the image are not question tokens.
             last_visual = int(visual_positions.max())
@@ -566,7 +566,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
 
             if before_tokens is not None and abs(before_tokens - current_tokens) > 1e-5:
                 logger.debug(
-                    "STAR-V3 average mismatch at layer %s: expected %.2f, recorded %.2f",
+                    "TOPS-Variant3 average mismatch at layer %s: expected %.2f, recorded %.2f",
                     layer_idx, current_tokens, before_tokens,
                 )
 
@@ -666,7 +666,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
             # P6c: the window comes from the wrapper, never from a heuristic.
             if self.visual_token_positions is None:
                 raise RuntimeError(
-                    "STAR-V3 stage-2: visual token positions were not pushed by the wrapper. "
+                    "TOPS-Variant3 stage-2: visual token positions were not pushed by the wrapper. "
                     "The 'seq_length - 15 - 10' heuristic is off by 11 tokens on Qwen3-VL and must "
                     "not be used as a fallback. Call model.set_visual_token_positions(...) first."
                 )
@@ -678,7 +678,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
             self.stage1_actual_tokens = detected_visual_len
             self.prefill_done = True
             self.visual_token_sum = 0.0
-            print(f"[STAR-V3] Prefill: seq_length={seq_length}, visual_len={detected_visual_len} "
+            print(f"[TOPS-Variant3] Prefill: seq_length={seq_length}, visual_len={detected_visual_len} "
                   f"(stage-1 cap {self.stage1_keep_tokens}, target {self.target_visual_tokens}, "
                   f"convention {self.budget_convention})")
 
@@ -716,7 +716,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
             if should_prune:
                 target = self.pruning_layers[layer_idx]
                 visual_positions = self.visual_token_positions
-                print(f"\n[STAR-V3 S2] Layer {layer_idx}: {self.current_visual_length} → {target} tokens")
+                print(f"\n[TOPS-Variant3 S2] Layer {layer_idx}: {self.current_visual_length} → {target} tokens")
 
                 visual_importance = self._compute_visual_token_importance(
                     hidden_states, decoder_layer, position_embeddings, visual_positions,
@@ -729,7 +729,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
                     selected_t = torch.sort(visual_importance.topk(keep).indices).values
 
                 if _debug_enabled():
-                    print(f"    [STAR-V3 S2] importance: min={visual_importance.min():.6f} "
+                    print(f"    [TOPS-Variant3 S2] importance: min={visual_importance.min():.6f} "
                           f"max={visual_importance.max():.6f} mean={visual_importance.mean():.6f} "
                           f"keep={selected_t.numel()}")
             else:
@@ -740,11 +740,11 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
                     and layer_idx not in self.stage2_reported_layers
                 ):
                     target = self.pruning_layers[layer_idx]
-                    print(f"[STAR-V3 S2] Layer {layer_idx}: skip (current {self.current_visual_length} ≤ target {target})")
+                    print(f"[TOPS-Variant3 S2] Layer {layer_idx}: skip (current {self.current_visual_length} ≤ target {target})")
                     self.stage2_skip_events.append((layer_idx, self.current_visual_length, target))
                     self.stage2_reported_layers.add(layer_idx)
 
-            # The layer always runs on the UNPRUNED sequence: STAR-V3 prunes AFTER the layer
+            # The layer always runs on the UNPRUNED sequence: TOPS-Variant3 prunes AFTER the layer
             # (probe -> run layer -> prune), the opposite of FastV.
             hidden_states = decoder_layer(
                 hidden_states,
@@ -830,7 +830,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
                 self.stage2_events.append((layer_idx, prev_length, self.current_visual_length))
                 self.stage2_reported_layers.add(layer_idx)
 
-                print(f"[STAR-V3 S2] Layer {layer_idx} done: {prev_length} → {self.current_visual_length} "
+                print(f"[TOPS-Variant3 S2] Layer {layer_idx} done: {prev_length} → {self.current_visual_length} "
                       f"(seq {orig_seq_len} → {new_len}, text {new_len - self.current_visual_length})")
 
             # P5a: DeepStack injects AFTER decoder layers 0,1,2 (0-indexed) --
@@ -862,7 +862,7 @@ class StarV3Qwen3VLModel(_BASE_MODEL_CLS):
             total_layers = len(self.layers)
             observed_avg = self._compute_observed_average(total_layers)
             schedule_avg = self._compute_schedule_average(self.stage1_expected_tokens, total_layers)
-            print("\n[STAR-V3] Stage summary:")
+            print("\n[TOPS-Variant3] Stage summary:")
             print(f"  Budget convention: {self.budget_convention} "
                   f"(target {self.target_visual_tokens}, {total_layers} layers)")
             if self.stage1_actual_tokens is not None:

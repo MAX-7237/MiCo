@@ -54,7 +54,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 #     }
 # }
 
-R_dict = { #这个是STAR_V2的配置
+R_dict = { #这个是TOPS_VARIANT2的配置
     "7b": {
         2: {
             192: 240,
@@ -170,7 +170,7 @@ def cluster_and_merge(x, cluster_num):
     x_merged = torch.zeros(B * cluster_num, C)
     x_merged.index_add_(dim=0, index=idx.reshape(B * N).cpu(), source=x_source.reshape(B * N, C))
     x_merged = x_merged.reshape(B, cluster_num, C)
-    
+
     return x_merged.to(device=x.device, dtype=x.dtype)
 
 
@@ -183,7 +183,7 @@ class HoloV_2_LlamaModel(LlamaModel):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
-        
+
         if config.num_hidden_layers == 32:
             self.scale = "7b"
         elif config.num_hidden_layers == 40:
@@ -198,12 +198,12 @@ class HoloV_2_LlamaModel(LlamaModel):
             self.visual_token_length = 2880 // 2
             self.anyres = True
 
-        # PrefixVLM config
+        # TOPSEarly config
         if config.num_hidden_layers == 32:
             self.pruning_loc = [2, 8, 16, 24]
         elif config.num_hidden_layers == 40:
             self.pruning_loc = [2, 8, 20]
-    
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -311,11 +311,11 @@ class HoloV_2_LlamaModel(LlamaModel):
                     use_cache,
                 )
             else:
-                # # PrefixVLM
+                # # TOPSEarly
                 # if seq_length > 1:
                 #     visual_token_num += visual_token_length
                 #     visual_token_list.append(visual_token_length)
-                    
+
                 #     if (decoder_layer.self_attn.layer_idx + 1) in self.pruning_loc:
                 #         attn_mask = torch.ones((batch_size, hidden_states.shape[1]), device=hidden_states.device)
                 #         attn_mask = _prepare_4d_causal_attention_mask(attn_mask, (batch_size, hidden_states.shape[1]), hidden_states, 0)
@@ -330,7 +330,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                 #         hidden_states = layer_outputs[0]
 
                 #         self_attn_weights = layer_outputs[1].mean(1)
-                #         cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length, 
+                #         cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length,
                 #                                                self.system_prompt_length:self.system_prompt_length+visual_token_length]
                 #         cross_attn_weights = cross_attn_weights.mean(1)
 
@@ -347,7 +347,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                 #             device=hidden_states.device
                 #         ).unsqueeze(0)
                 #         retained_visual_tokens[0][retained_visual_index] = 1
-                        
+
                 #         total_visual_tokens = hidden_states[:, self.system_prompt_length:self.system_prompt_length+visual_token_length]
                 #         sparse_visual_tokens = total_visual_tokens[:, torch.where(retained_visual_tokens == 0)[1]]
                 #         sparse_attn_weights = cross_attn_weights[:, torch.where(retained_visual_tokens == 0)[1]]
@@ -374,13 +374,13 @@ class HoloV_2_LlamaModel(LlamaModel):
                 #         layer_outputs = (hidden_states, layer_outputs[2])
                 #         visual_token_length = select_visual_tokens.shape[1] + merge_sparse_tokens.shape[1]
                 #         print(f"layer_idx: {decoder_layer.self_attn.layer_idx+1}, visual_token_length: {visual_token_length}, retained_num: {retained_num}, merge_num: {merge_num}, cluster_num: {cluster_num}")
-                
-                # PrefixVLM+
+
+                # TOPSEarly+
                 #不使用cross-attention，而是使用sim来挑选merge token
                 if seq_length > 1:
                     visual_token_num += visual_token_length
                     visual_token_list.append(visual_token_length)
-                    
+
                     if (decoder_layer.self_attn.layer_idx + 1) in self.pruning_loc:
                         attn_mask = torch.ones((batch_size, hidden_states.shape[1]), device=hidden_states.device)
                         attn_mask = _prepare_4d_causal_attention_mask(attn_mask, (batch_size, hidden_states.shape[1]), hidden_states, 0)
@@ -395,7 +395,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                         hidden_states = layer_outputs[0]
 
                         self_attn_weights = layer_outputs[1].mean(1)
-                        cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length, 
+                        cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length,
                                                                self.system_prompt_length:self.system_prompt_length+visual_token_length]
                         cross_attn_weights = cross_attn_weights.mean(1)
 
@@ -415,7 +415,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                         #     device=hidden_states.device
                         # ).unsqueeze(0)
                         # retained_visual_tokens[0][retained_visual_index] = 1
-                        
+
                         # total_visual_tokens = hidden_states[:, self.system_prompt_length:self.system_prompt_length+visual_token_length]
                         # sparse_visual_tokens = total_visual_tokens[:, torch.where(retained_visual_tokens == 0)[1]]
 
@@ -440,7 +440,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                         #     )
                         #     max_sim = sim_matrix.max(dim=-1).values
                         #     merge_scores = 1 - max_sim#如果后面没有视觉token了，使用和后面的文本token的相似度计算score
-                        
+
                         # merge_num = max(int(sparse_visual_tokens.shape[1] * 0.05), 1)
                         # merge_token_index = merge_scores.topk(merge_num).indices
 
@@ -463,8 +463,8 @@ class HoloV_2_LlamaModel(LlamaModel):
                         # layer_outputs = (hidden_states, layer_outputs[2])
                         # visual_token_length = select_visual_tokens.shape[1] + merge_sparse_tokens.shape[1]
                         # print(f"layer_idx: {decoder_layer.self_attn.layer_idx+1}, visual_token_length: {visual_token_length}, retained_num: {retained_num}, merge_num: {merge_num}, cluster_num: {cluster_num}")
-                        
-                        
+
+
                         #-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         #1) 用“平均相似度最低”来选 retained_token（更分散/更不相似的token）
                         #不从前往后剪枝
@@ -565,8 +565,8 @@ class HoloV_2_LlamaModel(LlamaModel):
                         #     f"retained_num: {retained_abs_idx.numel()}, "
                         #     f"merge_num: {merge_abs_idx.numel()}"
                         # )
-            
-            
+
+
                         #-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         #2: score = λ * attn + (1-λ) * diversity
                         #只用retained_token
@@ -674,8 +674,8 @@ class HoloV_2_LlamaModel(LlamaModel):
                             f"avg_attn: {avg_attn:.4f}, "
                             f"avg_sim: {avg_sim:.4f}"
                         )
-                    
-                    
+
+
                     else:
                         layer_outputs = decoder_layer(
                             hidden_states,
@@ -691,7 +691,7 @@ class HoloV_2_LlamaModel(LlamaModel):
                         hidden_states,
                         attention_mask=attention_mask,
                         position_ids=torch.tensor([[
-                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]], 
+                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]],
                             dtype=torch.int64).cuda(),
                         past_key_value=past_key_values,
                         output_attentions=output_attentions,

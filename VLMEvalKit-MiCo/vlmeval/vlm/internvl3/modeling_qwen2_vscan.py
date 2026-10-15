@@ -14,7 +14,7 @@ feature-level in InternVLChatModelPruning.extract_feature (pruning_method=='vsca
 
 The (layer, keep) schedule is chosen so the average visual-token count across the
 28 decoder layers equals the requested target, keeping VScan directly comparable
-to fastv / star_v3 / tops at the same token budget.
+to fastv / tops_variant3 / tops at the same token budget.
 """
 
 from functools import partial

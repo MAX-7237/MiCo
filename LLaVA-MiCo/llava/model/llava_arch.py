@@ -174,9 +174,9 @@ class LlavaMetaForCausalLM(ABC):
         return self.get_model().get_vision_tower()
 
     def encode_images(self, images, texts=None, input_ids=None):
-        if 'prumerge' in self.pruning_method or self.pruning_method == 'visionzip' or self.pruning_method == 'fastervlm' or self.pruning_method == 'scope' or self.pruning_method == 'prefixvlm' or self.pruning_method in ('HoloV', 'holov', 'HoloV_2') or self.pruning_method == 'Idea' or self.pruning_method == 'prefixvlm_2' or self.pruning_method == 'tops_iclr' or self.pruning_method == 'svdvlm' or self.pruning_method == 'd2p' or self.pruning_method == 'cover_prune_2_projector_vit_raw' or self.pruning_method == 'cover_prune_merge' or self.pruning_method == 'merge_attn_cov_llm' or self.pruning_method in ('attn_cov_proj_llm', 'attn_cov_proj_llm_2', 'last_attn_cov_proj_llm_2', 'attn_cov_proj_llm_4regions_sg', 'attn_cov_proj_4regions_sg', 'attn_cov_proj_llm_4regions_entropy_sg', 'attn_cov_proj_llm_12_24', 'attn_cov_proj_llm_12', 'attn_cov_proj', 'cov_proj', 'cov_proj_llm_12_24', 'attn_H_cov_proj', 'attn_H_cov_proj_llm_12_24', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj', 'attn_H_cov_vit_proj') or (isinstance(self.pruning_method, str) and self.pruning_method.startswith('attn_H_cov_vit_proj_llm')):
+        if 'prumerge' in self.pruning_method or self.pruning_method == 'visionzip' or self.pruning_method == 'fastervlm' or self.pruning_method == 'scope' or self.pruning_method == 'tops_early' or self.pruning_method in ('HoloV', 'holov', 'HoloV_2') or self.pruning_method == 'Idea' or self.pruning_method == 'tops' or self.pruning_method == 'tops_iclr' or self.pruning_method == 'svdvlm' or self.pruning_method == 'd2p' or self.pruning_method == 'cover_prune_2_projector_vit_raw' or self.pruning_method == 'cover_prune_merge' or self.pruning_method == 'merge_mico_coverage_llm' or self.pruning_method in ('mico_coverage_proj_llm', 'mico_coverage_proj_llm_2', 'last_mico_coverage_proj_llm_2', 'mico_coverage_proj_llm_4regions_sg', 'mico_coverage_proj_4regions_sg', 'mico_coverage_proj_llm_4regions_entropy_sg', 'mico_coverage_proj_llm_12_24', 'mico_coverage_proj_llm_12', 'mico_coverage_proj', 'cov_proj', 'cov_proj_llm_12_24', 'mico_projected', 'mico_projected_llm_12_24', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj', 'mico_s1') or (isinstance(self.pruning_method, str) and self.pruning_method.startswith('mico')):
                 image_features, image_attentions, image_keys, image_cls = self.get_model().get_vision_tower()(images, output_attentions=True)
-        elif self.pruning_method == 'trim' or self.pruning_method == 'cdp3' or 'thcp' in self.pruning_method or self.pruning_method == 'star_pro' or self.pruning_method in ('tsvol', 'tsvol_w', 'tsvol_llm', 'tsvol_w_llm', 'cover_prune_2', 'cover_prune_2_proj', 'cover_prune_2_rawattn', 'cover_prune_2_tv', 'cover_prune_3', 'cover_prune_3_anti', 'mmtok'):
+        elif self.pruning_method == 'trim' or self.pruning_method == 'cdp3' or 'thcp' in self.pruning_method or self.pruning_method == 'tops_experimental' or self.pruning_method in ('tsvol', 'tsvol_w', 'tsvol_llm', 'tsvol_w_llm', 'cover_prune_2', 'cover_prune_2_proj', 'cover_prune_2_rawattn', 'cover_prune_2_tv', 'cover_prune_3', 'cover_prune_3_anti', 'mmtok'):
                 # tsvol_llm / tsvol_w_llm (Set B): use texts path only to obtain CLS attention
                 # (for the _w weighting); their scoring uses post-mm_projector visual
                 # (4096-d) + embed_tokens(prompt) text (4096-d), NOT the CLIP embeds.
@@ -195,12 +195,12 @@ class LlavaMetaForCausalLM(ABC):
             self._mustdrop_key_set = key_set  # Key token indices [B, K]
         else:
             image_features = self.get_model().get_vision_tower()(images)
-        
+
         B, N, C = image_features.shape
         device = image_features.device
         index_masks = torch.ones(B, N, dtype=torch.bool, device=device)
         merged_features = None
-        
+
         if 'prumerge' in self.pruning_method:
             cls_attn = image_attentions.mean(dim=1)
 
@@ -212,7 +212,7 @@ class LlavaMetaForCausalLM(ABC):
                 cls_attn[:, arithmetic_idx] = 0
                 selected_idx = cls_attn.topk(k=self.visual_token_num//2-1, dim=1).indices
                 selected_idx = torch.cat([selected_idx, arithmetic_idx.unsqueeze(0).expand(B, -1)], dim=1)
-            
+
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, selected_idx, True)
             pruned_idx = index_masks.float().topk(k=N-self.visual_token_num+1, dim=1, largest=False).indices
@@ -262,10 +262,10 @@ class LlavaMetaForCausalLM(ABC):
                     cluster_center = cluster_avg + selected_feat[b, i, :] * (1 - torch.sum(cluster_weights))
                     updated_feat[b, i, :] = cluster_center
             image_features[index_masks] = updated_feat.flatten(0, 1)
-            
+
             extra_weight = pruned_attn / torch.sum(pruned_attn, dim=1, keepdim=True)
             merged_features = torch.sum(pruned_feat * extra_weight.unsqueeze(-1), dim=1, keepdim=True)
-        
+
         elif self.pruning_method == 'visionzip':
             dominant_token_num = int(self.visual_token_num * 27 / 32) - 1
             contextual_token_num = self.visual_token_num - dominant_token_num - 1
@@ -276,7 +276,7 @@ class LlavaMetaForCausalLM(ABC):
 
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, topk_idx, True)
-            
+
             # filter
             features_filtered = image_features.masked_select(~index_masks.unsqueeze(-1)).view(B, N - dominant_token_num, C)
             metric_filtered = image_keys[~index_masks].view(B, N - dominant_token_num, C)
@@ -300,7 +300,7 @@ class LlavaMetaForCausalLM(ABC):
 
             # merge
             merged_features = torch.cat([image_cls, contextual_tokens], dim=1)
-        
+
         elif self.pruning_method == 'fastervlm':
             cls_attn = image_attentions.mean(dim=1)
 
@@ -331,13 +331,13 @@ class LlavaMetaForCausalLM(ABC):
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, selected_idx, True)
 
-        elif self.pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj', 'attn_H_cov_vit_proj') or (isinstance(self.pruning_method, str) and self.pruning_method.startswith('attn_H_cov_vit_proj_llm')):
-            # Same inner CLS×coverage as attn_cov_proj*, but cosine is on CLIP
+        elif self.pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj', 'mico_s1') or (isinstance(self.pruning_method, str) and self.pruning_method.startswith('mico')):
+            # Same inner CLS×coverage as mico_coverage_proj*, but cosine is on CLIP
             # tokens (pre-mm_projector). Isolates S1 feature space vs the
             # post-projector arms. llm_12 keeps 2T then prefix2_first LLM
             # prune; vit_proj keeps T and skips LLM prune.
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import (
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import (
                 inner_weighted_raw_cls_select,
             )
 
@@ -347,20 +347,20 @@ class LlavaMetaForCausalLM(ABC):
             t_patch = keep_total // B if (B > 1 and aspect == 'anyres') else keep_total
             # The H-ViT family is single-S2 dynamic pruning: retain 2T here,
             # then let its one LLM cut solve R for the requested average T.
-            h_vit = self.pruning_method.startswith('attn_H_cov_vit_proj')
-            keep_2t = self.pruning_method == 'attn_cov_vit_proj_llm_12' or self.pruning_method.startswith('attn_H_cov_vit_proj_llm')
+            h_vit = self.pruning_method.startswith('mico_s1')
+            keep_2t = self.pruning_method == 'mico_coverage_vit_proj_llm_12' or self.pruning_method.startswith('mico')
             n_keep = max(1, min((2 * t_patch) if keep_2t else t_patch, N))
             new_masks = []
             for b in range(B):
                 new_masks.append(
                     inner_weighted_raw_cls_select(
-                        image_features[b], cls_attn[b], n_keep, attn_h=h_vit
+                        image_features[b], cls_attn[b], n_keep, mico=h_vit
                     )
                 )
             index_masks = torch.stack(new_masks, dim=0)
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
-            log_i = getattr(self, '_attn_cov_vit_proj_log_i', 0)
-            self._attn_cov_vit_proj_log_i = log_i + 1
+            log_i = getattr(self, '_mico_coverage_vit_proj_log_i', 0)
+            self._mico_coverage_vit_proj_log_i = log_i + 1
             if log_i == 0 or (enable_debug and log_i < 8):
                 s2 = (
                     ("S2=one dynamic LLM layer, w=text_attn*|h|*coverage"
@@ -468,7 +468,7 @@ class LlavaMetaForCausalLM(ABC):
             # aggregate the remaining tokens
             remaining_tokens = image_features[~index_masks].view(B, -1, C)
             merged_features = remaining_tokens.mean(dim=1, keepdim=True)
-        
+
         elif self.pruning_method == 'dart':
             image_normalized = (image_features / image_features.norm(dim=-1, keepdim=True))
             visual_token_num = (self.visual_token_num - 8) // 8
@@ -487,13 +487,13 @@ class LlavaMetaForCausalLM(ABC):
                     retained_set.update(topk_real_idx)
                     valid_set.difference_update(topk_real_idx)
                 retained_idx.append(list(retained_set))
-            
+
             retained_idx = torch.tensor(retained_idx, dtype=torch.long, device=device)
             retained_idx = torch.sort(retained_idx).values
 
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, retained_idx, True)
-        
+
         #----------------------------------------------------------------------------------------------
         # MMTok: stash the PRE-projector CLIP penultimate features (hidden_states[select_layer],
         # CLS already stripped by feature_select -> shape (B,N,1024)). MMTok's vision->vision
@@ -515,11 +515,11 @@ class LlavaMetaForCausalLM(ABC):
         index_masks = index_masks.to(image_features.device)
         # ========================================
 
-        if self.pruning_method == 'merge_attn_cov_llm':
+        if self.pruning_method == 'merge_mico_coverage_llm':
             # Post-projector: keep 2T CLS-pivots, merge leftovers onto nearest pivot,
-            # then FastV-layer attn_cov_llm prune so layer-average is T.
+            # then FastV-layer mico_coverage_llm prune so layer-average is T.
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import merge_to_cls_pivots
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import merge_to_cls_pivots
 
             cls_attn = image_attentions.mean(dim=1)  # (B, N) CLS→patch
             keep_total = int(self.visual_token_num)  # T_avg
@@ -543,11 +543,11 @@ class LlavaMetaForCausalLM(ABC):
             image_features = torch.stack(new_feats, dim=0)
             index_masks = torch.stack(new_masks, dim=0)
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
-            log_i = getattr(self, '_merge_attn_cov_llm_log_i', 0)
-            self._merge_attn_cov_llm_log_i = log_i + 1
+            log_i = getattr(self, '_merge_mico_coverage_llm_log_i', 0)
+            self._merge_mico_coverage_llm_log_i = log_i + 1
             if log_i == 0 or (enable_debug and log_i < 8):
                 print(
-                    f"[merge_attn_cov_llm] sample={log_i} T={keep_total} "
+                    f"[merge_mico_coverage_llm] sample={log_i} T={keep_total} "
                     f"n_pivots/crop={n_pivots} N_before/crop={N} B={B} "
                     f"n_rest/crop={rest_counts} N_after_merge/crop={merged_counts} "
                     f"N_after_merge_total={sum(merged_counts)} "
@@ -555,13 +555,13 @@ class LlavaMetaForCausalLM(ABC):
                     f"(pivots=top-2T CLS, leftovers -> nearest pivot mean)"
                 )
 
-        if self.pruning_method in ('attn_cov_proj_llm', 'attn_cov_proj_llm_2', 'attn_cov_proj_llm_4regions_sg', 'attn_cov_proj_llm_12_24', 'attn_cov_proj_llm_12'):
+        if self.pruning_method in ('mico_coverage_proj_llm', 'mico_coverage_proj_llm_2', 'mico_coverage_proj_llm_4regions_sg', 'mico_coverage_proj_llm_12_24', 'mico_coverage_proj_llm_12'):
             # Same S1 keep 2T. S2 locus differs: proj = K=3; proj_2 / 4regions = K=2;
             # 12 is one LLM prune at 1-based L12 with FastV-style avg-T keep;
-            # 12_24 uses prefixvlm_2 layers 12/24 and that keep table.
+            # 12_24 uses tops layers 12/24 and that keep table.
             # 4regions only changes how the 2T are placed (quadrant quotas).
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import (
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import (
                 inner_weighted_raw_cls_select,
                 inner_weighted_raw_cls_select_4regions_sg,
             )
@@ -574,7 +574,7 @@ class LlavaMetaForCausalLM(ABC):
             new_masks = []
             last_stats = {}
             for b in range(B):
-                if self.pruning_method == 'attn_cov_proj_llm_4regions_sg':
+                if self.pruning_method == 'mico_coverage_proj_llm_4regions_sg':
                     mask_b, last_stats = inner_weighted_raw_cls_select_4regions_sg(
                         image_features[b], cls_attn[b], n_keep
                     )
@@ -585,15 +585,15 @@ class LlavaMetaForCausalLM(ABC):
                     )
             index_masks = torch.stack(new_masks, dim=0)
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
-            if self.pruning_method == 'attn_cov_proj_llm_12_24':
-                s2_desc = "S2=LLM L12/L24 prefixvlm_2 keep, w=text_attn*coverage"
-            elif self.pruning_method == 'attn_cov_proj_llm_12':
+            if self.pruning_method == 'mico_coverage_proj_llm_12_24':
+                s2_desc = "S2=LLM L12/L24 tops keep, w=text_attn*coverage"
+            elif self.pruning_method == 'mico_coverage_proj_llm_12':
                 s2_desc = "S2=LLM first 12_24 locus (7B L12 / 13B L15) avg T, w=text_attn*coverage"
             else:
-                k_llm = 2 if self.pruning_method in ('attn_cov_proj_llm_2', 'attn_cov_proj_llm_4regions_sg') else 3
+                k_llm = 2 if self.pruning_method in ('mico_coverage_proj_llm_2', 'mico_coverage_proj_llm_4regions_sg') else 3
                 s2_desc = f"S2=LLM K={k_llm} avg T, w=text_attn*coverage"
-            log_i = getattr(self, '_attn_cov_proj_llm_log_i', 0)
-            self._attn_cov_proj_llm_log_i = log_i + 1
+            log_i = getattr(self, '_mico_coverage_proj_llm_log_i', 0)
+            self._mico_coverage_proj_llm_log_i = log_i + 1
             if log_i == 0 or (enable_debug and log_i < 8):
                 extra = ""
                 if last_stats:
@@ -607,15 +607,15 @@ class LlavaMetaForCausalLM(ABC):
                 )
 
         elif self.pruning_method in (
-            'attn_cov_proj', 'cov_proj', 'attn_H_cov_proj',
-            'cov_proj_llm_12_24', 'attn_H_cov_proj_llm_12_24',
+            'mico_coverage_proj', 'cov_proj', 'mico_projected',
+            'cov_proj_llm_12_24', 'mico_projected_llm_12_24',
         ):
-            # Ablations vs attn_cov_proj_llm_12_24:
-            #   *_llm_12_24 keep 2T then prefixvlm_2 L12/L24;
+            # Ablations vs mico_coverage_proj_llm_12_24:
+            #   *_llm_12_24 keep 2T then tops L12/L24;
             #   the others keep T at proj and skip LLM prune.
             # cov_* drops attention; attn_H_* multiplies |h| at this prune site.
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import (
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import (
                 inner_weighted_raw_cls_select,
             )
 
@@ -626,13 +626,13 @@ class LlavaMetaForCausalLM(ABC):
             keep_2t = self.pruning_method.endswith('_12_24')
             n_keep = max(1, min((2 * t_patch) if keep_2t else t_patch, N))
             coverage_only = self.pruning_method.startswith('cov_proj')
-            attn_h = self.pruning_method.startswith('attn_H_cov')
+            mico = self.pruning_method.startswith('mico_weighted')
             new_masks = []
             for b in range(B):
                 new_masks.append(
                     inner_weighted_raw_cls_select(
                         image_features[b], cls_attn[b], n_keep,
-                        coverage_only=coverage_only, attn_h=attn_h,
+                        coverage_only=coverage_only, mico=mico,
                     )
                 )
             index_masks = torch.stack(new_masks, dim=0)
@@ -642,9 +642,9 @@ class LlavaMetaForCausalLM(ABC):
             if log_i == 0 or (enable_debug and log_i < 8):
                 w_s1 = (
                     "coverage" if coverage_only else
-                    ("raw_cls*|h|*coverage" if attn_h else "raw_cls*coverage")
+                    ("raw_cls*|h|*coverage" if mico else "raw_cls*coverage")
                 )
-                s2 = "S2=LLM L12/L24 prefixvlm_2 keep" if keep_2t else "no LLM prune"
+                s2 = "S2=LLM L12/L24 tops keep" if keep_2t else "no LLM prune"
                 print(
                     f"[{self.pruning_method}] sample={log_i} T={keep_total} "
                     f"keep/crop={n_keep} N={N} B={B} "
@@ -653,12 +653,12 @@ class LlavaMetaForCausalLM(ABC):
                     flush=True,
                 )
 
-        elif self.pruning_method == 'attn_cov_proj_4regions_sg':
+        elif self.pruning_method == 'mico_coverage_proj_4regions_sg':
             # Projector-only: keep T (not 2T), no LLM prune. Same 4-quadrant s_g
-            # quotas as attn_cov_proj_llm_4regions_sg so the two arms isolate
+            # quotas as mico_coverage_proj_llm_4regions_sg so the two arms isolate
             # "extra 2T pool + K=2" vs "cut to T at proj".
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import (
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import (
                 inner_weighted_raw_cls_select_4regions_sg,
             )
 
@@ -676,8 +676,8 @@ class LlavaMetaForCausalLM(ABC):
                 new_masks.append(mask_b)
             index_masks = torch.stack(new_masks, dim=0)
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
-            log_i = getattr(self, '_attn_cov_proj_4r_log_i', 0)
-            self._attn_cov_proj_4r_log_i = log_i + 1
+            log_i = getattr(self, '_mico_coverage_proj_4r_log_i', 0)
+            self._mico_coverage_proj_4r_log_i = log_i + 1
             if log_i == 0 or (enable_debug and log_i < 8):
                 extra = f" k={last_stats.get('k')} s_g={['%.3f' % x for x in last_stats.get('s_g', [])]}"
                 print(
@@ -688,12 +688,12 @@ class LlavaMetaForCausalLM(ABC):
                     flush=True,
                 )
 
-        elif self.pruning_method == 'attn_cov_proj_llm_4regions_entropy_sg':
+        elif self.pruning_method == 'mico_coverage_proj_llm_4regions_entropy_sg':
             # S1 keep N1=(1+α(H_cls))T in [1.5T, 2T], then the same 4-quadrant
             # s_g quotas. S2 is K=2 text_attn×coverage with dynamic_R so the
             # layer-average stays T: R=(T*L-K*N1)/(L-K).
             import os
-            from llava.model.language_model.modeling_llama_attn_cov_llm import (
+            from llava.model.language_model.modeling_llama_mico_coverage_llm import (
                 cls_attn_entropy_norm,
                 inner_weighted_raw_cls_select_4regions_sg,
                 n1_from_cls_entropy,
@@ -718,8 +718,8 @@ class LlavaMetaForCausalLM(ABC):
                 new_masks.append(mask_b)
             index_masks = torch.stack(new_masks, dim=0)
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
-            log_i = getattr(self, '_attn_cov_proj_ent_log_i', 0)
-            self._attn_cov_proj_ent_log_i = log_i + 1
+            log_i = getattr(self, '_mico_coverage_proj_ent_log_i', 0)
+            self._mico_coverage_proj_ent_log_i = log_i + 1
             if log_i == 0 or (enable_debug and log_i < 8):
                 extra = f" k={last_stats.get('k')} s_g={['%.3f' % x for x in last_stats.get('s_g', [])]}"
                 print(
@@ -729,11 +729,11 @@ class LlavaMetaForCausalLM(ABC):
                     f"(S1=raw_cls*coverage N1(H){extra}, S2=LLM K=2 avg T, w=text_attn*coverage)",
                     flush=True,
                 )
-        
+
         elif self.pruning_method == 'divprune':
             image_normalized = (image_features / image_features.norm(dim=-1, keepdim=True))
             cosine_matrix = 1.0 - torch.matmul(image_normalized, image_normalized.transpose(1, 2))
-            
+
             select_idx = torch.empty((B, self.visual_token_num), dtype=torch.long, device=device)
             for i in range(self.visual_token_num):
                 m2 = cosine_matrix if i==0 \
@@ -741,7 +741,7 @@ class LlavaMetaForCausalLM(ABC):
                 scores = torch.topk(m2, 2, dim=1, largest=False).values[:, 1] \
                     if i==0 else torch.min(m2, dim=1).values
                 select_idx[:, i] = torch.argmax(scores, dim=-1)
-            
+
             select_idx = torch.sort(select_idx).values
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, select_idx, True)
@@ -843,7 +843,7 @@ class LlavaMetaForCausalLM(ABC):
             #   cover_prune_2_proj:    SINGLE stage, keep exactly T (like divprune_coverage).
             #   cover_prune_2:         STAGE-1, keep 2T; LLM layers do S2 (min-max attn).
             #   cover_prune_2_rawattn: same as cover_prune_2 but S1 uses RAW cls_attn (no min-max);
-            #                          S2 (prefix_2) also uses raw attn. Two-stage, keep 2T.
+            #                          S2 (tops) also uses raw attn. Two-stage, keep 2T.
             import os
             enable_debug = os.environ.get('ENABLE_DEBUG', '0') == '1'
             _proj = self.pruning_method.endswith('_proj')
@@ -1061,14 +1061,14 @@ class LlavaMetaForCausalLM(ABC):
                 'kernel_stats': [],
                 'selection_stats': []
             }
-            
+
             image_normalized = image_features / image_features.norm(dim=-1, keepdim=True) # (B, N, D)
             image_normalized = image_normalized.float() # (B, N, D)
             similarity = torch.matmul(image_normalized, image_normalized.transpose(1, 2)) # (B, N, N)
 
             image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True) # (B, N, C)
             text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True) # (M, C)
-            
+
             # Debug: 文本embeddings统计
             if enable_debug:
                 M = text_embeds.shape[0]
@@ -1079,7 +1079,7 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"  text_embeds.shape: {text_embeds.shape}")
                 print(f"  M (num text tokens): {M}")
                 print(f"  image_embeds.shape: {image_embeds.shape}")
-                
+
                 # 如果M>1，显示文本tokens之间的相似度
                 if M > 1:
                     text_sim = torch.matmul(text_embeds, text_embeds.t())
@@ -1090,9 +1090,9 @@ class LlavaMetaForCausalLM(ABC):
                     print(f"  Min pairwise similarity: {text_sim_triu.min().item():.4f}")
                 else:
                     print(f"\n[Warning] Only 1 text token! CDP3 may not work optimally.")
-            
+
             relevance = torch.matmul(image_embeds, text_embeds.t()) # (B, N, M)
-            
+
             # Debug: Relevance矩阵统计（在mean之前）
             if enable_debug:
                 print(f"\n[Relevance Matrix] (before mean)")
@@ -1102,15 +1102,15 @@ class LlavaMetaForCausalLM(ABC):
                     print(f"    Mean: {relevance[b].mean().item():.4f}")
                     print(f"    Std: {relevance[b].std().item():.4f}")
                     print(f"    Range: [{relevance[b].min().item():.4f}, {relevance[b].max().item():.4f}]")
-                    
+
                     # 显示每个文本token的平均相关性
                     if M > 1 and M <= 10:  # 只在M不太大时显示
                         per_text_relevance = relevance[b].mean(dim=0)  # (M,)
                         print(f"    Per-text avg relevance: {per_text_relevance.cpu().tolist()}")
-            
+
             relevance = (-relevance).mean(dim=-1) # (B, N)
             relevance = (relevance - relevance.min() + 1e-6) / (relevance.max() - relevance.min()) # (B, N)
-            
+
             # Debug: Relevance统计（在mean和normalize之后）
             if enable_debug:
                 print(f"\n[Relevance Scores] (after mean & normalize)")
@@ -1124,7 +1124,7 @@ class LlavaMetaForCausalLM(ABC):
                     print(f"    Top-5 indices: {relevance[b].topk(5).indices.cpu().tolist()}")
 
             kernel = relevance.unsqueeze(2) * similarity * relevance.unsqueeze(1) # (B, N, N)
-            
+
             # Debug: Kernel矩阵统计
             if enable_debug:
                 print(f"\n[Kernel Matrix]")
@@ -1141,11 +1141,11 @@ class LlavaMetaForCausalLM(ABC):
             cis = torch.zeros((self.visual_token_num, B, N), device=device) # (T, B, N)
             di2s = torch.diagonal(kernel, dim1=1, dim2=2).clone() # (B, N)
             select_idx = torch.empty((self.visual_token_num, B), dtype=torch.long, device=device) # (T, B)
-            
+
             # Debug: 记录选择过程
             if enable_debug:
                 selection_process = []
-            
+
             for i in range(self.visual_token_num):
                 j = torch.argmax(di2s, dim=-1)
                 select_idx[i] = j
@@ -1155,7 +1155,7 @@ class LlavaMetaForCausalLM(ABC):
                 cis[i, :, :] = eis
                 di2s -= torch.square(eis)
                 di2s[torch.arange(B), j] = -float('inf')
-                
+
                 # Debug: 记录关键步骤的统计（每10步记录一次）
                 if enable_debug and i % 10 == 0:
                     for b in range(min(B, 1)):
@@ -1169,11 +1169,11 @@ class LlavaMetaForCausalLM(ABC):
                             'di2s_max': valid_di2s.max().item() if len(valid_di2s) > 0 else 0,
                             'di2s_std': valid_di2s.std().item() if len(valid_di2s) > 0 else 0,
                         })
-            
+
             select_idx = torch.sort(select_idx.t()).values # (B, T)
             index_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             index_masks.scatter_(1, select_idx, True)
-            
+
             # Debug: 最终选择统计
             if enable_debug:
                 print(f"\n[DPP Selection Process] (Batch 0, every 10 steps)")
@@ -1187,36 +1187,36 @@ class LlavaMetaForCausalLM(ABC):
                             f"{info['di2s_mean']:<12.4f} "
                             f"{info['di2s_max']:<12.4f} "
                             f"{info['di2s_std']:<12.4f}")
-                
+
                 print(f"\n[Final Selection Statistics]")
                 for b in range(min(B, 1)):
                     selected_indices = select_idx[b].cpu()
                     selected_relevances = relevance[b, selected_indices]
-                    
+
                     # 计算选中tokens的多样性
                     selected_sim = similarity[b][selected_indices][:, selected_indices]
                     mask = ~torch.eye(self.visual_token_num, dtype=torch.bool, device=device)
                     avg_sim = selected_sim[mask].mean().item()
-                    
+
                     print(f"  Batch {b}:")
                     print(f"    Selected tokens: {self.visual_token_num}")
                     print(f"    Avg relevance of selected: {selected_relevances.mean().item():.4f}")
                     print(f"    Relevance range: [{selected_relevances.min().item():.4f}, {selected_relevances.max().item():.4f}]")
                     print(f"    Avg pairwise similarity: {avg_sim:.4f}")
                     print(f"    Diversity score: {1-avg_sim:.4f}")
-                    
+
                     # 对比：随机选择的baseline
                     random_indices = torch.randperm(N, device=device)[:self.visual_token_num]
                     random_relevances = relevance[b, random_indices]
                     random_sim = similarity[b][random_indices][:, random_indices]
                     random_avg_sim = random_sim[mask].mean().item()
-                    
+
                     print(f"\n  [Comparison with Random Selection]")
                     print(f"    Random avg relevance: {random_relevances.mean().item():.4f}")
                     print(f"    Random diversity: {1-random_avg_sim:.4f}")
                     print(f"    Relevance improvement: {(selected_relevances.mean() - random_relevances.mean()).item():.4f}")
                     print(f"    Diversity improvement: {(1-avg_sim) - (1-random_avg_sim):.4f}")
-                
+
                 print(f"\n{'='*80}\n")
 
         elif self.pruning_method in ('tsvol', 'tsvol_w'):
@@ -1518,132 +1518,132 @@ class LlavaMetaForCausalLM(ABC):
                 all_masks.append(batch_mask)
 
             index_masks = torch.stack(all_masks, dim=0)  # (B, N)
-        
+
         elif 'thcp_1' in self.pruning_method:
             # 改进的THCP：借鉴TRIM的文本相关性计算
-            
+
             # ========== 超参数配置 ==========
             text_keep_ratio = 0.4  # 可以适当调高，因为现在不用max了
             diversity_weight = 0.9  # 可以适当降低，让文本相关性也发挥作用
-            
+
             # ========== Step 1: 选择重要文本tokens（保持原有逻辑） ==========
             M = text_embeds.shape[0]
             text_normalized = text_embeds / (text_embeds.norm(dim=-1, keepdim=True) + 1e-8)
-            
+
             text_norm = text_embeds.norm(dim=-1)
             text_sim_matrix = torch.matmul(text_normalized, text_normalized.t())
             text_uniqueness = 1 - (text_sim_matrix.sum(dim=-1) - 1) / max(M - 1, 1)
-            
+
             text_importance = 0.5 * text_norm + 0.5 * text_uniqueness
             text_importance = text_importance / (text_importance.sum() + 1e-8)
-            
+
             num_important_texts = max(1, int(M * text_keep_ratio))
             important_text_indices = torch.topk(text_importance, num_important_texts).indices
             important_texts = text_embeds[important_text_indices]
             important_texts_norm = important_texts / (important_texts.norm(dim=-1, keepdim=True) + 1e-8)
-            
+
             # ========== Step 2: 为每个batch选择视觉tokens ==========
             all_masks = []
-            
+
             for b in range(B):
                 # 关键改进：使用TRIM风格的平均相似度，而不是max
                 image_normalized = image_embeds[b] / (image_embeds[b].norm(dim=-1, keepdim=True) + 1e-8)
-                
+
                 # 计算每个视觉token与所有重要文本token的相似度矩阵
                 text_relevance_matrix = torch.matmul(image_normalized, important_texts_norm.t())  # (N, K)
-                
+
                 # 使用平均而不是max，这保留了区分度
                 text_relevance = text_relevance_matrix.mean(dim=1)  # (N,)
-                
+
                 # 可选：使用加权平均，给相似度更高的文本词汇更大权重
                 # weights = F.softmax(text_relevance_matrix * 3, dim=1)
                 # text_relevance = (text_relevance_matrix * weights).sum(dim=1)
-                
+
                 # 归一化到[0, 1]区间，让数值范围与后面的相似度可比
                 text_relevance = (text_relevance - text_relevance.min()) / \
                                 (text_relevance.max() - text_relevance.min() + 1e-8)
-                
+
                 # 贪心选择：既要文本相关，又要视觉多样
                 selected_indices = []
                 available_mask = torch.ones(N, dtype=torch.bool, device=device)
-                
+
                 # 使用image_embeds而不是image_features计算相似度，保持特征空间统一
                 visual_normalized = image_normalized  # 复用已经归一化的image_embeds
                 visual_similarity = torch.matmul(visual_normalized, visual_normalized.t())  # (N, N)
-                
+
                 for step in range(self.visual_token_num):
                     if not available_mask.any():
                         break
-                    
+
                     # 计算候选得分
                     scores = text_relevance.clone()
                     scores[~available_mask] = -float('inf')
-                    
+
                     # 多样性惩罚
                     if len(selected_indices) > 0:
                         selected_tensor = torch.tensor(selected_indices, device=device)
                         max_similarity = visual_similarity[:, selected_tensor].max(dim=1).values
-                        
+
                         # 现在text_relevance和similarity都在合理的范围内，可以直接相减
                         scores = scores - diversity_weight * max_similarity
-                    
+
                     # 选择得分最高的token
                     selected_idx = torch.argmax(scores).item()
                     selected_indices.append(selected_idx)
                     available_mask[selected_idx] = False
-                
+
                 # 构建mask
                 batch_mask = torch.zeros(N, dtype=torch.bool, device=device)
                 batch_mask[torch.tensor(selected_indices, device=device)] = True
                 all_masks.append(batch_mask)
-            
+
             index_masks = torch.stack(all_masks, dim=0)
-        
+
         elif 'thcp_v2' in self.pruning_method:
             # Text-Concept Coverage Maximization (Vectorized)
             # 核心思想：确保选出的visual tokens能够覆盖所有重要的文本概念
-            
+
             # ========== 超参数配置 ==========
             coverage_weight = 0.1  # 文本覆盖的权重
             diversity_weight = 0.6  # 视觉多样性的权重
-            
+
             # ========== Step 1: 计算文本重要性（不预先筛选） ==========
             M = text_embeds.shape[0]
             text_normalized = text_embeds / (text_embeds.norm(dim=-1, keepdim=True) + 1e-8)
-            
+
             all_masks = []
-            
+
             for b in range(B):
                 # 获取当前batch的embeddings
                 image_emb_b = image_embeds[b]  # (N, C)
                 image_emb_b_norm = image_emb_b / (image_emb_b.norm(dim=-1, keepdim=True) + 1e-8)
-                
+
                 # ========== Step 2: 计算文本-视觉响应矩阵 ==========
                 response_matrix = torch.matmul(image_emb_b_norm, text_normalized.t())  # (N, M)
-                
+
                 # 计算文本重要性：能激活视觉的文本更重要
                 text_visual_activation = response_matrix.max(dim=0).values  # (M,)
                 text_sim_matrix = torch.matmul(text_normalized, text_normalized.t())
                 text_uniqueness = 1 - (text_sim_matrix.sum(dim=-1) - 1) / max(M - 1, 1)
                 text_importance = 0.7 * text_visual_activation + 0.3 * text_uniqueness  # (M,)
                 text_importance = text_importance / (text_importance.sum() + 1e-8)
-                
+
                 # ========== Step 3: 覆盖导向的贪心选择 ==========
                 selected_indices = []
                 available_mask = torch.ones(N, dtype=torch.bool, device=device)
-                
+
                 # 预计算视觉相似度矩阵
                 visual_feat_b = image_features[b]  # (N, D)
                 visual_feat_b_norm = visual_feat_b / (visual_feat_b.norm(dim=-1, keepdim=True) + 1e-8)
                 visual_similarity = torch.matmul(visual_feat_b_norm, visual_feat_b_norm.t())  # (N, N)
-                
+
                 # 追踪文本覆盖度
                 text_coverage = torch.zeros(M, device=device)  # (M,)
-                
+
                 for step in range(self.visual_token_num):
                     if not available_mask.any():
                         break
-                    
+
                     if step == 0:
                         # 第一个token：选择能覆盖最多重要文本的
                         coverage_scores = (response_matrix * text_importance.unsqueeze(0)).sum(dim=-1)  # (N,)
@@ -1654,35 +1654,35 @@ class LlavaMetaForCausalLM(ABC):
                         new_coverage = torch.maximum(text_coverage.unsqueeze(0), response_matrix)  # (N, M)
                         coverage_gain = (new_coverage - text_coverage.unsqueeze(0)) * text_importance.unsqueeze(0)  # (N, M)
                         total_coverage_gain = coverage_gain.sum(dim=-1)  # (N,)
-                        
+
                         # === 计算多样性得分（向量化） ===
                         selected_tensor = torch.tensor(selected_indices, device=device)
                         max_similarity_to_selected = visual_similarity[:, selected_tensor].max(dim=1).values  # (N,)
                         diversity_scores = 1 - max_similarity_to_selected  # (N,)
-                        
+
                         # === 综合得分 ===
                         scores = coverage_weight * total_coverage_gain + diversity_weight * diversity_scores
-                    
+
                     # 屏蔽已选择的tokens
                     scores[~available_mask] = -float('inf')
-                    
+
                     # 选择得分最高的token
                     selected_idx = torch.argmax(scores).item()
                     selected_indices.append(selected_idx)
                     available_mask[selected_idx] = False
-                    
+
                     # 更新文本覆盖度
                     text_coverage = torch.maximum(text_coverage, response_matrix[selected_idx])
-                
+
                 # 构建mask
                 batch_mask = torch.zeros(N, dtype=torch.bool, device=device)
                 batch_mask[torch.tensor(selected_indices, device=device)] = True
                 all_masks.append(batch_mask)
-            
+
             index_masks = torch.stack(all_masks, dim=0)  # (B, N)
 
 
-        
+
         elif 'thcp_v3' in self.pruning_method:
             # Text-Concept Coverage Maximization (Vectorized)
             # 核心思想：确保选出的visual tokens能够覆盖所有重要的文本概念
@@ -1960,7 +1960,7 @@ class LlavaMetaForCausalLM(ABC):
             # Text-Concept Coverage Maximization (Adaptive)
             # M>1: 使用coverage机制
             # M=1: 使用relevance+diversity机制（类似CDP3但用贪心而非DPP）
-            
+
             # ========== 超参数配置 ==========
             # Stage 1 (THCP) Lambda Ablation Support
             # Formula: L_i(S) = (1-λ)R_i + λD_i(S)
@@ -1981,14 +1981,14 @@ class LlavaMetaForCausalLM(ABC):
                 'progression': [],
                 'final_stats': []
             }
-            
+
             M = text_embeds.shape[0]
             text_normalized = text_embeds / (text_embeds.norm(dim=-1, keepdim=True) + 1e-8)
-            
+
             # 判断使用哪种模式
             use_coverage_mode = (M > 1)
             debug_info['mode'] = 'coverage' if use_coverage_mode else 'relevance'
-            
+
             if enable_debug:
                 print(f"\n{'='*80}")
                 print(f"THCP Debug - Mode: {debug_info['mode'].upper()}")
@@ -2002,9 +2002,9 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"  Shape: {text_embeds.shape}")
                 print(f"  M (num tokens): {M}")
                 print(f"  Using {'Coverage' if use_coverage_mode else 'Relevance'} strategy")
-            
+
             all_masks = []
-            
+
             for b in range(B):
                 image_emb_b = image_embeds[b].to(device)  # (N, C) - ensure on correct device
                 image_emb_b_norm = image_emb_b / (image_emb_b.norm(dim=-1, keepdim=True) + 1e-8)
@@ -2019,9 +2019,9 @@ class LlavaMetaForCausalLM(ABC):
                 visual_feat_b = image_features[b].to(device)  # (N, D) - ensure on correct device
                 visual_feat_b_norm = visual_feat_b / (visual_feat_b.norm(dim=-1, keepdim=True) + 1e-8)
                 visual_similarity = torch.matmul(visual_feat_b_norm, visual_feat_b_norm.t())  # (N, N)
-                
+
                 step_debug = []
-                
+
                 if use_coverage_mode:
                     # ==================== 模式1：Coverage Mode (M > 1) ====================
                     # [保持原来的coverage代码]
@@ -2030,13 +2030,13 @@ class LlavaMetaForCausalLM(ABC):
                     text_uniqueness = 1 - (text_sim_matrix.sum(dim=-1) - 1) / max(M - 1, 1)
                     text_importance = 0.7 * text_visual_activation + 0.3 * text_uniqueness
                     text_importance = text_importance / (text_importance.sum() + 1e-8)
-                    
+
                     text_coverage = torch.zeros(M, device=device)
-                    
+
                     for step in range(self.visual_token_num):
                         if not available_mask.any():
                             break
-                        
+
                         if step == 0:
                             coverage_scores = (response_matrix * text_importance.unsqueeze(0)).sum(dim=-1)
                             scores = coverage_scores
@@ -2044,28 +2044,28 @@ class LlavaMetaForCausalLM(ABC):
                             new_coverage = torch.maximum(text_coverage.unsqueeze(0), response_matrix)
                             coverage_gain = (new_coverage - text_coverage.unsqueeze(0)) * text_importance.unsqueeze(0)
                             total_coverage_gain = coverage_gain.sum(dim=-1)
-                            
+
                             selected_tensor = torch.tensor(selected_indices, device=device)
                             max_similarity_to_selected = visual_similarity[:, selected_tensor].max(dim=1).values
                             diversity_scores = 1 - max_similarity_to_selected
-                            
+
                             scores = coverage_weight * total_coverage_gain + diversity_weight * diversity_scores
-                        
+
                         scores[~available_mask] = -float('inf')
                         selected_idx = torch.argmax(scores).item()
                         selected_indices.append(selected_idx)
                         available_mask[selected_idx] = False
                         text_coverage = torch.maximum(text_coverage, response_matrix[selected_idx])
-                
+
                 else:
                     # ==================== 模式2：Relevance Mode (M = 1) ====================
                     # 类似CDP3的思路，但用贪心而非DPP
-                    
+
                     # 计算相关性得分（类似CDP3）
                     text_relevance = response_matrix.squeeze(-1)  # (N,)
                     text_relevance = -text_relevance  # 取负（和CDP3一样）
                     text_relevance = (text_relevance - text_relevance.min() + 1e-6) / (text_relevance.max() - text_relevance.min())
-                    
+
                     if enable_debug and b == 0:
                         print(f"\n[Relevance Scores] (Batch {b})")
                         print(f"  Mean: {text_relevance.mean().item():.4f}")
@@ -2073,54 +2073,54 @@ class LlavaMetaForCausalLM(ABC):
                         print(f"  Range: [{text_relevance.min().item():.4f}, {text_relevance.max().item():.4f}]")
                         print(f"  Top-5 values: {text_relevance.topk(5).values.cpu().tolist()}")
                         print(f"  Top-5 indices: {text_relevance.topk(5).indices.cpu().tolist()}")
-                    
+
                     # 🔥 关键改进：用weighted scoring而不是coverage
                     # 核心思想：相关性高的token权重高，但要避免选择视觉上冗余的
-                    
+
                     for step in range(self.visual_token_num):
                         if not available_mask.any():
                             break
-                        
+
                         if step == 0:
                             # 第一个token：选择相关性最高的
                             scores = text_relevance.clone()
                         else:
                             # 后续tokens：平衡相关性和多样性
                             selected_tensor = torch.tensor(selected_indices, device=device)
-                            
+
                             # 🔥 核心改进：使用加权方案而不是coverage
                             # 相关性得分（保持每个token的原始相关性）
                             relevance_scores = text_relevance.clone()
-                            
+
                             # 多样性得分（与已选tokens的差异）
                             max_similarity_to_selected = visual_similarity[:, selected_tensor].max(dim=1).values
                             diversity_scores = 1 - max_similarity_to_selected
-                            
+
                             # 🔥 关键：加权融合（类似CDP3的kernel思想）
                             # 但我们用加法而不是乘法，因为我们要保持interpretability
                             scores = relevance_weight * relevance_scores + diversity_weight * diversity_scores
-                        
+
                         scores[~available_mask] = -float('inf')
                         selected_idx = torch.argmax(scores).item()
                         selected_indices.append(selected_idx)
                         available_mask[selected_idx] = False
-                        
+
                         if enable_debug and step % 10 == 0 and b == 0:
                             step_debug.append({
                                 'step': step,
                                 'selected_idx': selected_idx,
                                 'selected_relevance': text_relevance[selected_idx].item()
                             })
-                
+
                 # 构建mask
                 batch_mask = torch.zeros(N, dtype=torch.bool, device=device)
                 batch_mask[torch.tensor(selected_indices, device=device)] = True
                 all_masks.append(batch_mask)
-                
+
                 # Debug最终统计
                 if enable_debug and b == 0:
                     selected_tensor = torch.tensor(selected_indices, device=device)
-                    
+
                     if use_coverage_mode:
                         coverage_rate = (text_coverage > 0.5).float().mean().item()
                         weighted_coverage = (text_coverage * text_importance).sum().item()
@@ -2134,11 +2134,11 @@ class LlavaMetaForCausalLM(ABC):
                         selected_sim = visual_similarity[selected_tensor][:, selected_tensor]
                         mask = ~torch.eye(len(selected_indices), dtype=torch.bool, device=device)
                         avg_diversity = (1 - selected_sim[mask].mean()).item() if len(selected_indices) > 1 else 1.0
-                        
+
                         # 对比随机选择
                         random_indices = torch.randperm(N, device=device)[:self.visual_token_num]
                         random_relevance = text_relevance[random_indices].mean().item()
-                        
+
                         debug_info['final_stats'].append({
                             'batch': b,
                             'avg_relevance': avg_relevance,
@@ -2146,27 +2146,27 @@ class LlavaMetaForCausalLM(ABC):
                             'random_relevance': random_relevance,
                             'improvement': avg_relevance - random_relevance
                         })
-                        
+
                         print(f"\n[Selection Progress] (every 10 steps)")
                         print(f"  {'Step':<6} {'SelIdx':<8} {'SelRel':<10}")
                         print(f"  {'-'*6} {'-'*8} {'-'*10}")
                         for info in step_debug:
                             print(f"  {info['step']:<6} {info['selected_idx']:<8} {info['selected_relevance']:<10.4f}")
-                        
+
                         print(f"\n[Final Statistics] (Batch {b})")
                         print(f"  Avg relevance: {avg_relevance:.4f}")
                         print(f"  Avg diversity: {avg_diversity:.4f}")
                         print(f"  Random baseline: {random_relevance:.4f}")
                         print(f"  Improvement: {avg_relevance - random_relevance:.4f}")
-    
+
             index_masks = torch.stack(all_masks, dim=0)
-            
+
             if enable_debug:
                 print(f"\n{'='*80}\n")
 
-        elif self.pruning_method == 'star_pro':
+        elif self.pruning_method == 'tops_experimental':
             # ═══════════════════════════════════════════════════════════
-            # STAR-PRO Stage 1: Complementarity-Diversity Greedy Selection
+            # TOPS-Experimental Stage 1: Complementarity-Diversity Greedy Selection
             #
             # Selects m₁ = 2×target tokens from vision encoder output.
             # Score: I_i(S) = C_i + λ·D_i(S)
@@ -2225,9 +2225,9 @@ class LlavaMetaForCausalLM(ABC):
             index_masks = torch.stack(all_masks, dim=0)  # (B, N)
 
             if enable_debug:
-                print(f"[STAR-PRO S1] {N}→{tokens_per_patch} tokens/patch | λ={lambda_val} negate={negate}")
-        elif self.pruning_method == 'star_v5':
-            # STAR-V5: S2 Only Ablation (Skip Stage 1 THCP, Progressive Pruning Only)
+                print(f"[TOPS-Experimental S1] {N}→{tokens_per_patch} tokens/patch | λ={lambda_val} negate={negate}")
+        elif self.pruning_method == 'tops_variant5':
+            # TOPSPrototype-V5: S2 Only Ablation (Skip Stage 1 THCP, Progressive Pruning Only)
             # Stage 1 (here): SKIP THCP, keep all 576 (or 2880) tokens
             # Stage 2 (in modeling_llama_star): Progressive pruning 576 → target
             # Purpose: Isolate Stage 2 contribution for ablation study
@@ -2237,7 +2237,7 @@ class LlavaMetaForCausalLM(ABC):
 
             if enable_debug:
                 print(f"\n{'='*80}")
-                print(f"STAR-V5 Stage 1: SKIPPED (Ablation - S2 Only)")
+                print(f"TOPSPrototype-V5 Stage 1: SKIPPED (Ablation - S2 Only)")
                 print(f"{'='*80}")
 
             # Get vision features (without THCP processing)
@@ -2248,7 +2248,7 @@ class LlavaMetaForCausalLM(ABC):
 
             if enable_debug:
                 print(f"[Stage 1 Config - S2 Only Ablation]")
-                print(f"  Mode: STAR-V5 (S2 Only)")
+                print(f"  Mode: TOPSPrototype-V5 (S2 Only)")
                 print(f"  Stage 1: SKIPPED (no THCP)")
                 print(f"  Keeping ALL {N} tokens per batch")
                 print(f"  Final target (in Stage 2): {self.visual_token_num}")
@@ -2267,7 +2267,7 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"  ✓ Ready for Stage 2 progressive pruning in modeling_llama_star")
                 print(f"{'='*80}\n")
 
-        elif self.pruning_method == 'star_v2':
+        elif self.pruning_method == 'tops_variant2':
             # Two-Stage Pruning Framework
             # Stage 1 (here in llava_arch): Visual diversity-aware pruning - keep 50% tokens
             # Stage 2 (in modeling_llama_star): Text-guided progressive pruning
@@ -2277,7 +2277,7 @@ class LlavaMetaForCausalLM(ABC):
 
             if enable_debug:
                 print(f"\n{'='*80}")
-                print(f"STAR-V2 Stage 1: Diversity-Aware Visual Pruning")
+                print(f"TOPSPrototype-V2 Stage 1: Diversity-Aware Visual Pruning")
                 print(f"{'='*80}")
 
             # Get visual self-attention
@@ -2364,7 +2364,7 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"  Ready for Stage 2 text-guided progressive pruning")
                 print(f"{'='*80}\n")
 
-        elif self.pruning_method == 'star_v2_anchor':
+        elif self.pruning_method == 'tops_variant2_anchor':
             # Two-Stage Pruning Framework with Anchor-based De-redundancy
             # Stage 1: Select anchors (CLS attention) + remove similar neighbors
             # Stage 2: Text-guided progressive pruning
@@ -2374,7 +2374,7 @@ class LlavaMetaForCausalLM(ABC):
 
             if enable_debug:
                 print(f"\n{'='*80}")
-                print(f"STAR-V2-Anchor Stage 1: Anchor-based De-redundancy")
+                print(f"TOPSPrototype-V2-Anchor Stage 1: Anchor-based De-redundancy")
                 print(f"{'='*80}")
 
             # Get visual self-attention
@@ -2461,11 +2461,11 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"  Output shape: {image_features.shape}")
                 print(f"  Ready for Stage 2 text-guided progressive pruning")
                 print(f"{'='*80}\n")
-                
+
         #----------------------------------------------------------------------------------------------
         #相比于原来的方法，添加了除以均值的操作
         elif self.pruning_method == 'd2p':
-            # PrefixVLM S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
+            # TOPSEarly S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
             import os
             div_1 = float(os.environ.get("DIV_1", "0.5"))
             enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
@@ -2484,7 +2484,7 @@ class LlavaMetaForCausalLM(ABC):
             elif image_attentions.dim() == 2:
                 cls_attn = image_attentions             # (B, N)
             else:
-                raise ValueError(f"[prefixvlm] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
+                raise ValueError(f"[tops_early] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
             # normalize to [0,1] per-sample
             cls_attn = (cls_attn - cls_attn.min(dim=1, keepdim=True).values) / (
                 cls_attn.max(dim=1, keepdim=True).values - cls_attn.min(dim=1, keepdim=True).values + 1e-8
@@ -2549,10 +2549,10 @@ class LlavaMetaForCausalLM(ABC):
             if enable_debug:
                 print(f"[S1] {N}→{tokens_per_patch} tokens/patch | div_1={div_1}")
                 print(f"[S1] stage1_keep: {stage1_keep}")
-        
-        
+
+
         elif self.pruning_method == 'svdvlm':
-            # PrefixVLM S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
+            # TOPSEarly S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
             import os
             alpha_val = float(os.environ.get("ALPHA", "0.5"))
             enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
@@ -2633,12 +2633,12 @@ class LlavaMetaForCausalLM(ABC):
             if enable_debug:
                 print(f"[SVDVLMS1] {N}→{tokens_per_patch} tokens/patch | alpha_val={alpha_val}")
                 print(f"[SVDVLMS1] stage1_keep: {stage1_keep}")
-                
-        
+
+
         #----------------------------------------------------------------------------------------------
         #相比于原来的方法，添加了除以均值的操作
-        elif self.pruning_method == 'prefixvlm':
-            # PrefixVLM S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
+        elif self.pruning_method == 'tops_early':
+            # TOPSEarly S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
             import os
             alpha_val = float(os.environ.get("ALPHA", "0.5"))
             enable_debug = os.environ.get("ENABLE_DEBUG", "0") == "1"
@@ -2657,7 +2657,7 @@ class LlavaMetaForCausalLM(ABC):
             elif image_attentions.dim() == 2:
                 cls_attn = image_attentions             # (B, N)
             else:
-                raise ValueError(f"[prefixvlm] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
+                raise ValueError(f"[tops_early] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
             # normalize to [0,1] per-sample
             cls_attn = (cls_attn - cls_attn.min(dim=1, keepdim=True).values) / (
                 cls_attn.max(dim=1, keepdim=True).values - cls_attn.min(dim=1, keepdim=True).values + 1e-8
@@ -2722,11 +2722,11 @@ class LlavaMetaForCausalLM(ABC):
             if enable_debug:
                 print(f"[S1] {N}→{tokens_per_patch} tokens/patch | alpha_val={alpha_val}")
                 print(f"[S1] stage1_keep: {stage1_keep}")
-                
+
         #----------------------------------------------------------------------------------------------
         #相比于原来的方法，添加了除以均值的操作
-        elif self.pruning_method == 'prefixvlm_2' or self.pruning_method == 'tops_iclr':
-            # PrefixVLM S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
+        elif self.pruning_method == 'tops' or self.pruning_method == 'tops_iclr':
+            # TOPSEarly S1: Greedy selection with (CLS-attn importance) + (diversity / low similarity)
             # tops_iclr reuses this Stage-1 identically; Stage-2 (in-LLM) is disabled separately.
             import os
             alpha_1 = float(os.environ.get("ALPHA_1", "0.5"))
@@ -2746,7 +2746,7 @@ class LlavaMetaForCausalLM(ABC):
             elif image_attentions.dim() == 2:
                 cls_attn = image_attentions             # (B, N)
             else:
-                raise ValueError(f"[PrefixVLM_2] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
+                raise ValueError(f"[TOPS] Unexpected image_attentions shape: {tuple(image_attentions.shape)}")
             # normalize to [0,1] per-sample
             cls_attn = (cls_attn - cls_attn.min(dim=1, keepdim=True).values) / (
                 cls_attn.max(dim=1, keepdim=True).values - cls_attn.min(dim=1, keepdim=True).values + 1e-8
@@ -2779,7 +2779,7 @@ class LlavaMetaForCausalLM(ABC):
                         break
 
                     diversity = 1.0 - max_sim_to_S  # higher is better (less redundant)
-                    
+
                     if coverage_method == "SCOPE":
                         # SCOPE: marginal coverage gain
                         coverage = torch.clamp(vis_sim - max_sim_to_S.unsqueeze(0), min=0.0).sum(dim=1)
@@ -2861,7 +2861,7 @@ class LlavaMetaForCausalLM(ABC):
                     topk_values = [f"{v:.4f}" for v in cls_attn_topk.values.tolist()]
 
                     print(
-                        f"[PrefixVLM_2 S1] === Batch {b} Debug ===\n"
+                        f"[TOPS S1] === Batch {b} Debug ===\n"
                         f"  Config: alpha_1={alpha_1}, lambda_1={lambda_1}, N={N} -> keep={R}\n"
                         f"  CLS Attn: sel[mean/min/max/std]=[{sel_a_mean:.4f}/{sel_a_min:.4f}/{sel_a_max:.4f}/{sel_a_std:.4f}], "
                         f"unsel_mean={unsel_a_mean:.4f}, top5_idx={topk_indices}, top5_val={topk_values}\n"
@@ -2882,10 +2882,10 @@ class LlavaMetaForCausalLM(ABC):
             # ————————————————————————————————————————————————————————
 
             if enable_debug:
-                print(f"[PrefixVLM_2 S1] {N}→{tokens_per_patch} tokens/patch | alpha_1={alpha_1}")
-                print(f"[PrefixVLM_2 S1] stage1_keep: {stage1_keep}")
-                
-                
+                print(f"[TOPS S1] {N}→{tokens_per_patch} tokens/patch | alpha_1={alpha_1}")
+                print(f"[TOPS S1] stage1_keep: {stage1_keep}")
+
+
         elif self.pruning_method == "HoloV_2":
             import os
             from llava.model.utils import HoloV_2
@@ -2957,7 +2957,7 @@ class LlavaMetaForCausalLM(ABC):
             if enable_debug:
                 print(f"[HoloV] Output image_features: shape={image_features.shape}, dtype={image_features.dtype}")
                 print(f"[HoloV] index_masks: shape={index_masks.shape}")
-        
+
         elif self.pruning_method == 'Idea':
             # ==================== Idea: Token Library with Density Peak Clustering ====================
             # Step 1: Cluster visual tokens using Density Peak Clustering (DPC)
@@ -3063,7 +3063,7 @@ class LlavaMetaForCausalLM(ABC):
                 print(f"[Idea DPC] Output image_features: {image_features.shape}")
                 print(f"[Idea DPC] Token library stored with {num_clusters} clusters")
                 print(f"{'='*80}\n")
-            
+
 
         elif self.pruning_method == 'vscan':
             # ==================== VScan Stage 1: Complementary Global and Local Scans ====================
@@ -3245,8 +3245,8 @@ class LlavaMetaForCausalLM(ABC):
                     print(f"  Index mask shape: {index_masks.shape}")
                     print(f"{'='*80}\n")
 
-        # 🔥 STAR-V2/V2-Anchor/V5/VScan need mm_projector (they bypassed line 307)
-        if self.pruning_method in ['star_v2', 'star_v2_anchor', 'star_v5',  'vscan']:
+        # 🔥 TOPSPrototype-V2/V2-Anchor/V5/VScan need mm_projector (they bypassed line 307)
+        if self.pruning_method in ['tops_variant2', 'tops_variant2_anchor', 'tops_variant5',  'vscan']:
             target_dtype = next(self.get_model().mm_projector.parameters()).dtype
             image_features = self.get_model().mm_projector(image_features.to(target_dtype))
 

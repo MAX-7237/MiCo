@@ -5,44 +5,48 @@ from transformers.models.llama import LlamaConfig
 from transformers.models.llama.modeling_llama import LlamaModel, Cache, DynamicCache, \
     _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast
-R_dict = {  
+
+R_dict = {  # 这个是TOPS_VARIANT2的配置
     "7b": {
-        8: {
-            192: 192,
+        2: {
+            192: 240,
         },
-        12:{256:128,
-            128:64,
+        8: {
+            192: 216,
+        },
+        12:{128:64,
             64:32,
             32:16},
         16: {
-            192: 144,
+            192: 192,
         },
         24: {
-            256: 64,
-            192: 96,
+            192: 192,
             128: 32,
             64: 16,
             32:8,
         },
     },
     "13b": {
-        15: {
-            192: 128,
-            128: 64,
-            64: 32,
-            32: 16,
+        2: {
+            192: 300,
+            128: 300,
+            64: 70,
         },
-        30: {
-            192: 64,
-            128: 32,
-            64: 16,
-            32: 8,
+        8: {
+            192: 200,
+            128: 100,
+            64: 35,
+        },
+        20: {
+            192: 110,
+            128: 40,
+            64: 20,
         },
     }
 }
 
-
-class Prefix_2_LlamaModel(LlamaModel):
+class TOPSEarlyLlamaModel(LlamaModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
 
@@ -50,7 +54,7 @@ class Prefix_2_LlamaModel(LlamaModel):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig, prefixvlm_2_config: Dict):
+    def __init__(self, config: LlamaConfig, tops_early_config: Dict):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
@@ -60,18 +64,17 @@ class Prefix_2_LlamaModel(LlamaModel):
         elif config.num_hidden_layers == 40:
             self.scale = "13b"
 
-        self.retained_num = prefixvlm_2_config["T"]
+        self.retained_num = tops_early_config["T"]
         import os
+        # 使用retained_num*2作为visual_token_length，因为S1阶段要保留的token数量就是retained_num*2
         if config.image_aspect_ratio == "pad":
-            print(f"config.image_aspect_ratio == 'pad'")
             self.visual_token_length = int(os.environ.get("STAGE1_KEEP", "288"))
             self.anyres = False
         elif config.image_aspect_ratio == "anyres":
-            print(f"config.image_aspect_ratio == 'anyres'")
-            self.visual_token_length = int(os.environ.get("STAGE1_KEEP", "1280"))
+            self.visual_token_length = 5*int(os.environ.get("STAGE1_KEEP", "288"))
             self.anyres = True
 
-        # PrefixVLM config
+        # TOPSEarly config
         if config.num_hidden_layers == 32:
             if self.retained_num == 32:
                 self.pruning_loc = [12,24]
@@ -79,34 +82,8 @@ class Prefix_2_LlamaModel(LlamaModel):
                 self.pruning_loc = [12, 24]
             elif self.retained_num == 128:
                 self.pruning_loc = [12, 24]
-            elif self.retained_num == 192:
-                self.pruning_loc = [8,16,24]
-            elif self.retained_num == 256:
-                self.pruning_loc = [12, 24]
         elif config.num_hidden_layers == 40:
-            self.pruning_loc = [15,30]
-
-        # tops_iclr: keep prefixvlm_2 Stage-1 (pre-LLM) pruning unchanged,
-        # but disable in-LLM Stage-2 pruning entirely (no layer prunes).
-        if prefixvlm_2_config.get("disable_s2", False):
-            self.pruning_loc = []
-            print("[tops_iclr] Stage-2 (in-LLM) pruning DISABLED: pruning_loc = []")
-
-        # cover_prune_2: reuse THIS correct S2 forward (rebuild-mask + preserve-RoPE +
-        # anyres-aware) instead of the buggy STARVLMModel. S1 (llava_arch inner-weighted
-        # coverage) keeps 2T; S2 here prunes 2T -> T (first loc) -> T//4 (second loc).
-        # T = prefixvlm_2_config["T"] is the pad/anyres target passed directly (T already
-        # encodes anyres scale, so NO dynamic_res ×5 for cover_prune_2).
-        self.cover_prune_2 = prefixvlm_2_config.get("cover_prune_2", False)
-        self.cp2_rawattn = prefixvlm_2_config.get("cover_prune_2_rawattn", False)  # S2 用 raw attn (不 min-max)
-        self.cp2_tv = prefixvlm_2_config.get("cover_prune_2_tv", False)  # S2 任务相关性 = t→v 相似性 (非 attention)
-        if self.cover_prune_2:
-            T = self.retained_num
-            self.visual_token_length = 2 * T
-            self.pruning_loc = [12, 24] if self.scale == "7b" else [15, 30]
-            self._cp2_sched = {self.pruning_loc[0]: T, self.pruning_loc[1]: max(1, T // 4)}
-            print(f"[cover_prune_2] S2 on prefix_2 forward: S1_keep(visual_token_length)="
-                  f"{self.visual_token_length}, loc={self.pruning_loc}, sched={self._cp2_sched}")
+            self.pruning_loc = [2, 8, 20]
 
     def forward(
         self,
@@ -196,18 +173,18 @@ class Prefix_2_LlamaModel(LlamaModel):
 
         # SparseVLM
         if seq_length > 1:
+            # 使用固定的text_rater_index
+            # visual_tokens = hidden_states[:, self.system_prompt_length:
+            #                               self.system_prompt_length+self.visual_token_length]
+            # text_tokens = hidden_states[:,
+            #                             self.system_prompt_length+self.visual_token_length:]
+            # matrix = text_tokens @ visual_tokens.transpose(1, 2)
+            # matrix = matrix.squeeze(0).softmax(0).mean(1)
+            # text_rater_index = torch.where(matrix > matrix.mean())[0]
 
-            import os
             visual_token_length = self.visual_token_length
             visual_token_num = 0
             visual_token_list = []
-
-            # ————————————————————————————————————————————————————————
-            # 渐进式剪枝可视化：记录每次剪枝后保留的原始 token 索引
-            self.pruning_history = []
-            device = inputs_embeds.device if inputs_embeds is not None else input_ids.device
-            _current_indices = torch.arange(visual_token_length, device=device)
-            # ————————————————————————————————————————————————————————
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -243,24 +220,14 @@ class Prefix_2_LlamaModel(LlamaModel):
                         )
                         hidden_states = layer_outputs[0]
                         
-                        # 1.动态计算 text_rater_index（循环内，因为 visual_token_length 每层在变）
+                        # 动态计算 text_rater_index（循环内，因为 visual_token_length 每层在变）
                         visual_tokens = hidden_states[:,self.system_prompt_length:self.system_prompt_length + visual_token_length]
                         text_tokens = hidden_states[:,self.system_prompt_length + visual_token_length:]
                         matrix = text_tokens @ visual_tokens.transpose(1, 2)
                         matrix = matrix.squeeze(0).softmax(0).mean(1)
                         text_rater_index = torch.where(
                             matrix > matrix.mean())[0]
-                        print(f"[PrefixVLM_2 S2] text_rater_index: {text_rater_index}")
-                        
-                        # 2.使用所有文本token作为text_rater
-                        # text_len = hidden_states.shape[1] - self.system_prompt_length - visual_token_length
-                        # text_rater_index = torch.arange(text_len, device=hidden_states.device)
-                        # print(f"[PrefixVLM_2 S2] text_rater_index: {text_rater_index}")
-                        
-                        # 3.使用最后一个文本token作为text_rater
-                        # text_len = hidden_states.shape[1] - self.system_prompt_length - visual_token_length
-                        # text_rater_index = torch.tensor([text_len - 1], device=hidden_states.device)
-                        # print(f"[PrefixVLM_2 S2] text_rater_index: {text_rater_index}")
+                        print(f"[S2] text_rater_index: {text_rater_index}")
 
                         self_attn_weights = layer_outputs[1].mean(1)
                         cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length,
@@ -269,45 +236,23 @@ class Prefix_2_LlamaModel(LlamaModel):
 
                         # -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         import os
-                        alpha_2 = float(os.environ.get("ALPHA_2", "0.5"))
-                        lambda_2 = float(os.environ.get("LAMBDA_2", "0.1"))
-                        coverage_method = os.environ.get("COVERAGE", "MEAN")
-                        print("S2使用的coverage方法是:",coverage_method)
+                        lambda_val = float(os.environ.get("LAMBDA", "0.5"))
 
                         # [B,V,D]
                         total_visual_tokens = hidden_states[:,self.system_prompt_length:self.system_prompt_length + visual_token_length]
                         B, V, D = total_visual_tokens.shape
                         device = hidden_states.device
                         dynamic_res = 5 if self.anyres else 1
-                        if getattr(self, "cover_prune_2", False):
-                            # cover_prune_2 schedule: 2T -> T -> T//4 (T already anyres-scaled)
-                            retained_num = self._cp2_sched[decoder_layer.self_attn.layer_idx + 1]
-                        else:
-                            retained_num = int(R_dict[self.scale][decoder_layer.self_attn.layer_idx + 1][self.retained_num] * dynamic_res)
+                        retained_num = int(R_dict[self.scale][decoder_layer.self_attn.layer_idx + 1][self.retained_num] * dynamic_res)
 
-                        # ---- metric cache: first pruning stage only ----
-                        if not hasattr(self, 'metric_cache'):
-                            self.metric_cache = {}
-                        if 'initial_visual_features' not in self.metric_cache:
-                            self.metric_cache['initial_visual_features'] = total_visual_tokens.detach().cpu()  # (B,V,D)
-                            self.metric_cache['initial_attn_scores'] = cross_attn_weights.detach().cpu()       # (B,V)
-                        # ---- end metric cache ----
-
-                        # 1) task relevance (higher better)
-                        _cp2tv = getattr(self, 'cp2_tv', False)
-                        if _cp2tv:
-                            # cover_prune_2_tv: 任务相关性 = t→v 相似性 (text_rater 文本token 与视觉token 余弦, 聚合到视觉token)
-                            _tfeat = torch.nn.functional.normalize(text_tokens[:, text_rater_index], p=2, dim=-1)  # (B,Tt,D)
-                            _vfeat = torch.nn.functional.normalize(total_visual_tokens, p=2, dim=-1)  # (B,V,D)
-                            attn = torch.clamp(_tfeat @ _vfeat.transpose(1, 2), min=0.0).mean(dim=1)  # (B,V) a_v=mean_t max(0,cos)
-                        else:
-                            attn = cross_attn_weights.detach()
-                            if attn.dim() == 1:
-                                attn = attn.unsqueeze(0)  # (B, V)
-                        if not (getattr(self, 'cp2_rawattn', False) or _cp2tv): # rawattn/tv: 不 min-max
-                            attn = (attn - attn.min(dim=1, keepdim=True).values) / (
-                                attn.max(dim=1, keepdim=True).values -
-                                attn.min(dim=1, keepdim=True).values + 1e-8)  # (B,V) in [0,1]
+                        # 1) attn importance (higher better)
+                        # 对attn归一化，确保数值在0-1之间
+                        attn = cross_attn_weights
+                        if attn.dim() == 1:
+                            attn = attn.unsqueeze(0)  # (1,V)
+                        attn = (attn - attn.min(dim=1, keepdim=True).values) / (
+                            attn.max(dim=1, keepdim=True).values -
+                            attn.min(dim=1, keepdim=True).values + 1e-8)  # (B,V) in [0,1]
 
                         # 2) normalized features for cosine
                         vis_norm = torch.nn.functional.normalize(
@@ -322,27 +267,13 @@ class Prefix_2_LlamaModel(LlamaModel):
                                 V, dtype=torch.bool, device=device)
                             selected = []
 
-                            # 预计算全量相似度矩阵 (V, V)
-                            full_sim = feat @ feat.t()  # (V, V)
-
-                            _cp2raw = getattr(self, 'cp2_rawattn', False)
-                            _inner = _cp2raw or _cp2tv   # cp2_rawattn / cp2_tv 都走内加权 coverage
-                            if not getattr(self, '_s2_path_reported', False):
-                                _tag = ('INNER-WEIGHTED (cp2_tv, t2v-sim, mult)' if _cp2tv else 'INNER-WEIGHTED (cp2_rawattn, mult)' if _cp2raw else 'ADDITIVE-RDC')
-                                print(f"[PrefixVLM_2 S2] SELECTION_PATH = {_tag} [code-rev=cp2tv-v1]")
-                                self._s2_path_reported = True
-                            if _inner:
-                                # cover_prune_2_rawattn: S2 与 S1 一致 = 内加权 coverage
-                                # (参考 VLMEvalKit COVER_Prune_2). seed i0 = argmax_i Σ_v a_v·max(0, sim(i,v))
-                                cov0 = (a.unsqueeze(0) * torch.clamp(full_sim, min=0.0)).sum(dim=1)
-                                i0 = int(torch.argmax(cov0).item())
-                            else:
-                                # prefix_2 原逻辑: 先选注意力最高的 token
-                                i0 = torch.argmax(a).item()
+                            # if retained_num > 0:
+                            # step0: pick highest attention
+                            i0 = torch.argmax(a).item()
                             selected.append(i0)  # 最少保留了一个image token
                             available[i0] = False
 
-                            max_sim_to_S = full_sim[i0].clone()    # (V,) = sim(i0, ·)
+                            max_sim_to_S = feat @ feat[i0]    # (V,) cosine
                             # 自己的sim设为1（反正不可选了）
                             max_sim_to_S[i0] = 1.0
 
@@ -350,29 +281,9 @@ class Prefix_2_LlamaModel(LlamaModel):
                                 if not available.any():
                                     break
 
-                                if _inner:
-                                    # 内加权 coverage: gain(i) = Σ_v a_v·max(0, sim(i,v) - g_v);  scores = gain
-                                    scores = (a.unsqueeze(0) * torch.clamp(full_sim - max_sim_to_S.unsqueeze(0), min=0.0)).sum(dim=1)
-                                else:
-                                    diversity = 1.0 - max_sim_to_S             # 越大越好
-
-                                    # 覆盖性分数: 候选token与其他未选中token的平均相似度（排除自身）
-                                    if coverage_method == "SCOPE":
-                                        # SCOPE: marginal coverage gain
-                                        coverage = torch.clamp(full_sim - max_sim_to_S.unsqueeze(0), min=0.0).sum(dim=1)
-                                        coverage[~available] = 0.0
-                                    else:
-                                        # MEAN: avg similarity to remaining unselected tokens
-                                        sim_to_avail = full_sim[:, available].sum(dim=1)
-                                        n_avail = available.sum().item()
-                                        if n_avail > 1:
-                                            coverage = (sim_to_avail - 1.0) / (n_avail - 1)
-                                        else:
-                                            coverage = torch.zeros(V, device=device)
-
-                                    scores = (a/a.mean()) + \
-                                        alpha_2 * (diversity/diversity.mean()) + \
-                                        lambda_2 * (coverage/coverage.mean())
+                                diversity = 1.0 - max_sim_to_S             # 越大越好
+                                scores = (1-lambda_val) * (a/a.mean()) + \
+                                    lambda_val * (diversity/diversity.mean())
 
                                 scores[~available] = -float("inf")
                                 idx = torch.argmax(scores).item()
@@ -382,7 +293,7 @@ class Prefix_2_LlamaModel(LlamaModel):
 
                                 # 更新 m_i = max(m_i, sim(i, idx))
                                 # (V,)
-                                sim_vec = full_sim[idx]
+                                sim_vec = feat @ feat[idx]
                                 max_sim_to_S = torch.maximum(
                                     max_sim_to_S, sim_vec)
                                 max_sim_to_S[idx] = 1.0
@@ -392,12 +303,6 @@ class Prefix_2_LlamaModel(LlamaModel):
                             selected_t = torch.sort(
                                 selected_t).values     # 保持原视觉顺序
                             all_selected.append(selected_t)
-
-                        # ————————————————————————————————————————————————————————
-                        # 更新原始索引映射：将当前选中的相对索引映射回原始 token 空间
-                        _current_indices = _current_indices[all_selected[0]]
-                        self.pruning_history.append(_current_indices.cpu().clone())
-                        # ————————————————————————————————————————————————————————
 
                         # batch=1 常见：直接取第0个
                         retained_visual_index = all_selected[0].unsqueeze(
@@ -417,57 +322,38 @@ class Prefix_2_LlamaModel(LlamaModel):
                         ), dim=1)
 
                         position_ids = position_ids[:, :hidden_states.shape[1]]
-                        if not output_attentions:
-                            # 下游期望 (hidden, cache) 或 (hidden,)，需要去掉attn_weights
-                            if use_cache:
-                                layer_outputs = (hidden_states, layer_outputs[2])
-                            else:
-                                layer_outputs = (hidden_states,)
+                        if output_attentions:
+                            layer_outputs = (hidden_states, layer_outputs[1], layer_outputs[2])
+                        else:
+                            layer_outputs = (hidden_states, layer_outputs[2])
                         visual_token_length = select_visual_tokens.shape[1]
 
-                        # ---- debug ----
+                        # ---- debug: avg selected attn & avg pairwise sim ----
                         # 选中token对应的attn均值
                         avg_attn = a[selected_t].mean().item()
                         # 选中token两两相似度均值（去掉对角线）
                         if selected_t.numel() > 1:
+                            # (R, D)  这里feat是vis_norm[b]
                             sel_feat = feat[selected_t]
                             sel_sim = sel_feat @ sel_feat.t()          # (R, R)
-                            diag_mask = ~torch.eye(sel_sim.size(
+                            mask = ~torch.eye(sel_sim.size(
                                 0), dtype=torch.bool, device=sel_sim.device)
-                            avg_sim = sel_sim[diag_mask].mean().item()
+                            avg_sim = sel_sim[mask].mean().item()
                         else:
                             avg_sim = 0.0
-                        # 选中token对未选中token的平均覆盖度
-                        unselected_mask = torch.ones(V, dtype=torch.bool, device=device)
-                        unselected_mask[selected_t] = False
-                        if unselected_mask.any() and selected_t.numel() > 0:
-                            # (R, U) 选中token与未选中token的相似度
-                            cov_sim = full_sim[selected_t][:, unselected_mask]
-                            # 对每个未选中token取最大覆盖（被哪个选中token最好地代表）
-                            max_cov_per_unsel = cov_sim.max(dim=0).values  # (U,)
-                            avg_coverage = max_cov_per_unsel.mean().item()
-                        else:
-                            avg_coverage = 1.0
                         print(
-                            f"[PrefixVLM_2 S2] layer_idx: {decoder_layer.self_attn.layer_idx+1}, "
-                            f"[PrefixVLM_2 S2] visual_token_length: {visual_token_length}, "
-                            f"[PrefixVLM_2 S2] retained_num: {retained_num}, "
-                            f"[PrefixVLM_2 S2] alpha_2: {alpha_2}, "
-                            f"[PrefixVLM_2 S2] lambda_2: {lambda_2}, "
-                            f"[PrefixVLM_2 S2] avg_attn_on_selected_tokens: {avg_attn:.4f}, "
-                            f"[PrefixVLM_2 S2] avg_sim_on_selected_tokens: {avg_sim:.4f}, "
-                            f"[PrefixVLM_2 S2] avg_coverage_on_selected_tokens: {avg_coverage:.4f}"
+                            f"layer_idx: {decoder_layer.self_attn.layer_idx+1}, "
+                            f"visual_token_length: {visual_token_length}, "
+                            f"retained_num: {retained_num}, "
+                            f"lambda_val: {lambda_val}, "
+                            f"avg_attn: {avg_attn:.4f}, "
+                            f"avg_sim: {avg_sim:.4f}"
                         )
 
                     else:
-                        # 非剪枝层：正常前向传播
-                        attn_mask = torch.ones(
-                            (batch_size, hidden_states.shape[1]), device=hidden_states.device)
-                        attn_mask = _prepare_4d_causal_attention_mask(
-                            attn_mask, (batch_size, hidden_states.shape[1]), hidden_states, 0)
                         layer_outputs = decoder_layer(
                             hidden_states,
-                            attention_mask=attn_mask,
+                            attention_mask=attention_mask,
                             position_ids=position_ids,
                             past_key_value=past_key_values,
                             output_attentions=output_attentions,

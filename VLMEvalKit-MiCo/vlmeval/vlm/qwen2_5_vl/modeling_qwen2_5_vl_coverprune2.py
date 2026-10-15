@@ -54,7 +54,7 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
         visual_token_num: int,
         disable_stage2: bool = False,
         pruning_layers: Optional[Dict[int, int]] = None,
-        attn_h: bool = False,
+        mico: bool = False,
         dynamic_r: bool = False,
         s1_mult: int = 2,
     ):
@@ -81,7 +81,7 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
         self.scale = "7b" if n_layers == 28 else "unknown"
 
         self.target_visual_tokens = visual_token_num
-        self.attn_h = bool(attn_h)
+        self.mico = bool(mico)
         self.dynamic_r = bool(dynamic_r)
         # S1 budget multiple of T (outer forward reads this; default 2 = legacy).
         self.s1_mult = max(1, int(s1_mult))
@@ -100,7 +100,7 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
             self.pruning_layers: Dict[int, int] = {}
             logger.warning_once("tops_2 single-stage: in-LLM Stage-2 pruning DISABLED (pruning_layers = {})")
         elif pruning_layers is not None:
-            # attn_cov_vit_proj_llm_12: one cut at TOPS first layer, FastV-style R.
+            # mico_coverage_vit_proj_llm_12: one cut at TOPS first layer, FastV-style R.
             # TOPS_SCHEDULE only lists 512/256/128; T=64/32 must not fall through
             # to "missing schedule → S2 off".
             self.pruning_layers = {int(k): int(v) for k, v in pruning_layers.items()}
@@ -207,7 +207,7 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
         Compute the (V,) Stage-2 task_relevance for each visual token.
 
         The relevance definition is an ABLATION KNOB (env S2_TASK_REL); the
-        attn_H_cov_vit_proj_llm framework around it is unchanged (this vector is
+        mico framework around it is unchanged (this vector is
         multiplied by |h| and fed to the RDC coverage greedy downstream).
 
           all_text      (default): softmax attn from EVERY text token to each
@@ -220,9 +220,9 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
                                     ablated out; selection driven by |h|+coverage).
         """
         mode = os.environ.get("S2_TASK_REL", "all_text").strip().lower()
-        # Dual-stage component ablation: H_VIT_NO_ATTN=1 forces the constant
+        # Dual-stage component ablation: MICO_NO_ATTENTION=1 forces the constant
         # relevance, same as S2_TASK_REL=uniform.
-        if os.environ.get("H_VIT_NO_ATTN", "0").strip() in ("1", "true", "True", "yes"):
+        if os.environ.get("MICO_NO_ATTENTION", "0").strip() in ("1", "true", "True", "yes"):
             mode = "uniform"
         V = int(visual_end - visual_start)
         device = hidden_states.device
@@ -318,11 +318,11 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
         lambda_2 = float(os.environ.get("LAMBDA_2", "1.0"))
 
         # S2 component switches for the dual-stage ablation (default ON = unchanged).
-        # See attn_cov_select._comp_on for the shared env convention.
+        # See mico_coverage_select._comp_on for the shared env convention.
         def _on(n):
             return os.environ.get(n, "0").strip() not in ("1", "true", "True", "yes")
-        use_h = _on("H_VIT_NO_H")
-        use_cov = _on("H_VIT_NO_COV")
+        use_h = _on("MICO_NO_NORM")
+        use_cov = _on("MICO_NO_COVERAGE")
 
         B, V, D = post_hidden.shape
 
@@ -331,7 +331,7 @@ class CoverPrune2Qwen2_5_VLModel(Qwen2_5_VLModel):
         attn = attn.detach()
         if attn.dim() == 1:
             attn = attn.unsqueeze(0)  # (1, V)
-        if self.attn_h:
+        if self.mico:
             if attn.shape[0] == 1 and B > 1:
                 attn = attn.expand(B, -1)
             if attn.shape != (B, V):

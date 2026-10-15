@@ -92,7 +92,7 @@ def eval_model(args):
     # This family keeps 2T in CLIP space, then uses exactly one dynamic S2 cut.
     # Parse K from the method name so the evaluation entry point and the model
     # cannot silently disagree about the measured LLM prune locus.
-    hvit_llm_match = re.fullmatch(r"attn_H_cov_vit_proj_llm_([1-9][0-9]*)", args.pruning_method)
+    hvit_llm_match = re.fullmatch(r"mico_([1-9][0-9]*)", args.pruning_method)
 
     # ========== Method Configuration ==========
     use_fastv = True if args.pruning_method == "fastv" else False
@@ -102,28 +102,28 @@ def eval_model(args):
     # post-prune keep. R = (T*L - K*N)/(L-K); 7B 128/64 -> R≈98/30. Do not pass
     # R=T — that was the old exact-keep path and is not comparable to FastV.
     # merge / afterlayer012 / proj already used T_avg. NeXT scripts pass 5x.
-    use_attn_cov_llm = args.pruning_method in (
-        "attn_cov_llm", "merge_attn_cov_llm", "attn_cov_llm_2", "attn_cov_llm_26",
-        "attn_cov_llm_afterlayer012", "attn_cov_proj_llm", "attn_cov_proj_llm_2", "attn_cov_proj_llm_12_24", "attn_cov_proj_llm_12", "attn_cov_vit_proj_llm_12", "cov_proj_llm_12_24", "attn_H_cov_proj_llm_12_24", "attn_cov_proj_llm_4regions_sg", "attn_cov_proj_llm_4regions_entropy_sg", "last_attn_cov_proj_llm_2", "cov_llm", "attn_h_cov_llm",
+    use_mico_coverage_llm = args.pruning_method in (
+        "mico_coverage_llm", "merge_mico_coverage_llm", "mico_coverage_llm_2", "mico_coverage_llm_26",
+        "mico_coverage_llm_afterlayer012", "mico_coverage_proj_llm", "mico_coverage_proj_llm_2", "mico_coverage_proj_llm_12_24", "mico_coverage_proj_llm_12", "mico_coverage_vit_proj_llm_12", "cov_proj_llm_12_24", "mico_projected_llm_12_24", "mico_coverage_proj_llm_4regions_sg", "mico_coverage_proj_llm_4regions_entropy_sg", "last_mico_coverage_proj_llm_2", "cov_llm", "mico_weighted_llm",
         "sim_cov_llm", "anti_sim_cov_llm",
     ) or hvit_llm_match is not None
-    if args.pruning_method == "merge_attn_cov_llm":
-        attn_cov_llm_config = {
+    if args.pruning_method == "merge_mico_coverage_llm":
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
         }
     elif hvit_llm_match is not None:
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": int(hvit_llm_match.group(1)),
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
-            "attn_h": True,
+            "mico": True,
         }
-    elif args.pruning_method in ("attn_cov_llm_2", "attn_cov_llm_26"):
-        attn_cov_llm_config = {
+    elif args.pruning_method in ("mico_coverage_llm_2", "mico_coverage_llm_26"):
+        mico_coverage_llm_config = {
             "K": 2,
             "K2": 6,
             "prune_layers": [2, 6],
@@ -131,31 +131,31 @@ def eval_model(args):
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
         }
-    elif args.pruning_method in ("attn_cov_proj_llm_2", "attn_cov_proj_llm_4regions_sg", "attn_cov_proj_llm_4regions_entropy_sg"):
+    elif args.pruning_method in ("mico_coverage_proj_llm_2", "mico_coverage_proj_llm_4regions_sg", "mico_coverage_proj_llm_4regions_entropy_sg"):
         # proj keep 2T or entropy-gated N1 in [1.5T, 2T], then FastV-locus K=2.
         # T is layer-avg via dynamic_R. S2 is text_attn×coverage (all text that
         # can see visuals under the causal mask).
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
         }
-    elif args.pruning_method in ("attn_cov_proj_llm_12", "attn_cov_vit_proj_llm_12"):
+    elif args.pruning_method in ("mico_coverage_proj_llm_12", "mico_coverage_vit_proj_llm_12"):
         # Same S2 as proj_llm_12. prefix2_first: 7B L12 / 13B L15.
         # Keep is FastV-style R=(T*L-K*2T)/(L-K), not the prefix2 keep table.
         # vit_proj S1 is CLIP-space; proj S1 is post-mm_projector.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 12,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
             "prefix2_first": True,
         }
-    elif args.pruning_method == "attn_cov_proj_llm_12_24":
+    elif args.pruning_method == "mico_coverage_proj_llm_12_24":
         # Same S1 (CLS×coverage 2T) and S2 select as proj_2.
-        # prefix2_keep overrides loci/keep to prefixvlm_2: 7B L12/24, 13B L15/30.
-        attn_cov_llm_config = {
+        # prefix2_keep overrides loci/keep to tops: 7B L12/24, 13B L15/30.
+        mico_coverage_llm_config = {
             "K": 12,
             "K2": 24,
             "prune_layers": [12, 24],
@@ -166,7 +166,7 @@ def eval_model(args):
         }
     elif args.pruning_method == "cov_proj_llm_12_24":
         # Same 2T + L12/L24 keep table; w=1 so both stages are coverage-only.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 12,
             "K2": 24,
             "prune_layers": [12, 24],
@@ -176,9 +176,9 @@ def eval_model(args):
             "prefix2_keep": True,
             "coverage_only": True,
         }
-    elif args.pruning_method == "attn_H_cov_proj_llm_12_24":
+    elif args.pruning_method == "mico_projected_llm_12_24":
         # Same 2T + L12/L24 keep table; w = attn * |h| at each prune site.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 12,
             "K2": 24,
             "prune_layers": [12, 24],
@@ -186,45 +186,45 @@ def eval_model(args):
             "T": args.visual_token_num,
             "dynamic_R": False,
             "prefix2_keep": True,
-            "attn_h": True,
+            "mico": True,
         }
-    elif args.pruning_method == "last_attn_cov_proj_llm_2":
-        # Same S1 (CLS×coverage 2T) and layer-avg K=2 as attn_cov_proj_llm_2.
+    elif args.pruning_method == "last_mico_coverage_proj_llm_2":
+        # Same S1 (CLS×coverage 2T) and layer-avg K=2 as mico_coverage_proj_llm_2.
         # S2 weights are last-token attention, not mean post-visual text attn.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
             "last_token": True,
         }
-    elif args.pruning_method in ("attn_cov_llm_afterlayer012", "attn_cov_proj_llm"):
-        # After layers 0/1/2 (1-based K=3). attn_cov_proj_llm also keeps 2T at projector.
-        attn_cov_llm_config = {
+    elif args.pruning_method in ("mico_coverage_llm_afterlayer012", "mico_coverage_proj_llm"):
+        # After layers 0/1/2 (1-based K=3). mico_coverage_proj_llm also keeps 2T at projector.
+        mico_coverage_llm_config = {
             "K": 3,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
         }
     elif args.pruning_method == "cov_llm":
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
             "coverage_only": True,
         }
-    elif args.pruning_method == "attn_h_cov_llm":
-        attn_cov_llm_config = {
+    elif args.pruning_method == "mico_weighted_llm":
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
-            "attn_h": True,
+            "mico": True,
         }
     elif args.pruning_method == "sim_cov_llm":
         # K=2; T is layer-average (FastV-matched). w = all-text cosine, times coverage.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
@@ -233,7 +233,7 @@ def eval_model(args):
         }
     elif args.pruning_method == "anti_sim_cov_llm":
         # Same as sim_cov_llm but w = (1 - [cos]_+) * coverage.
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
@@ -241,35 +241,35 @@ def eval_model(args):
             "anti_sim_cov": True,
         }
     else:
-        attn_cov_llm_config = {
+        mico_coverage_llm_config = {
             "K": 2,
             "T_avg": args.visual_token_num,
             "T": args.visual_token_num,
             "dynamic_R": True,
         }
-    
+
     use_sparsevlm = True if args.pruning_method == "sparsevlm" else False
     sparsevlm_config = {"T": args.visual_token_num}
-    
+
     use_d2p = True if args.pruning_method == "d2p" else False
     d2p_config = {"T": args.visual_token_num}
-    
+
     use_svdvlm = True if args.pruning_method == "svdvlm" else False
     svdvlm_config = {"T": args.visual_token_num}
-    
-    use_prefixvlm = True if args.pruning_method == "prefixvlm" else False
-    prefixvlm_config = {"T": args.visual_token_num}
-    
+
+    use_tops_early = True if args.pruning_method == "tops_early" else False
+    tops_early_config = {"T": args.visual_token_num}
+
     use_holov2 = True if args.pruning_method == "HoloV_2" else False
     # Official HoloV (pruning_method=HoloV/holov) is vision-side only; keep the standard Llama decoder.
     holov2_config = {"T": args.visual_token_num}
-    
+
     use_idea = True if args.pruning_method == "Idea" else False
     idea_config = {"T": args.visual_token_num}
-    
-    use_prefixvlm_2 = True if args.pruning_method in ("prefixvlm_2", "tops_iclr", "cover_prune_2", "cover_prune_2_rawattn", "cover_prune_2_tv") else False
-    prefixvlm_2_config = {"T": args.visual_token_num, "disable_s2": args.pruning_method == "tops_iclr", "cover_prune_2": args.pruning_method in ("cover_prune_2", "cover_prune_2_rawattn", "cover_prune_2_tv"), "cover_prune_2_rawattn": args.pruning_method == "cover_prune_2_rawattn", "cover_prune_2_tv": args.pruning_method == "cover_prune_2_tv"}
-    
+
+    use_tops = True if args.pruning_method in ("tops", "tops_iclr", "cover_prune_2", "cover_prune_2_rawattn", "cover_prune_2_tv") else False
+    tops_config = {"T": args.visual_token_num, "disable_s2": args.pruning_method == "tops_iclr", "cover_prune_2": args.pruning_method in ("cover_prune_2", "cover_prune_2_rawattn", "cover_prune_2_tv"), "cover_prune_2_rawattn": args.pruning_method == "cover_prune_2_rawattn", "cover_prune_2_tv": args.pruning_method == "cover_prune_2_tv"}
+
     use_pdrop = True if args.pruning_method == "pdrop" else False
     pdrop_config = {"T": args.visual_token_num}
 
@@ -297,13 +297,13 @@ def eval_model(args):
         "T": args.visual_token_num,         # Target visual tokens for comparison
     }
 
-    # ⭐ STAR Configuration
-    use_star = True if args.pruning_method in ["star", "star_v2", "star_pro", "star_v5"] else False
-    star_config = {
+    # ⭐ TOPSPrototype Configuration
+    use_tops_prototype = True if args.pruning_method in ["tops_prototype", "tops_variant2", "tops_experimental", "tops_variant5"] else False
+    tops_prototype_config = {
         "T": args.visual_token_num,  # Target visual tokens (64/128/192)
         "num_latent": args.num_latent,  # Number of latent tokens (default: 20)
         "latent_pool_size": (args.latent_pool_h, args.latent_pool_w),  # Grid size (default: 5x4)
-        "mode": "cover_prune_2" if args.pruning_method == "cover_prune_2" else ("star_v5" if args.pruning_method == "star_v5" else ("star_pro" if args.pruning_method == "star_pro" else ("star_v2" if args.pruning_method == "star_v2" else "star"))),  # COVER-Prune-2 / STAR-V5/V3/V2/V1
+        "mode": "cover_prune_2" if args.pruning_method == "cover_prune_2" else ("tops_variant5" if args.pruning_method == "tops_variant5" else ("tops_experimental" if args.pruning_method == "tops_experimental" else ("tops_variant2" if args.pruning_method == "tops_variant2" else "tops_prototype"))),  # COVER-Prune-2 / TOPSPrototype-V5/V3/V2/V1
         "debug": False,  # Set to True for debugging, False for performance testing
     }
 
@@ -317,8 +317,8 @@ def eval_model(args):
         "stage2_tokens": args.vscan_stage2_tokens,  # Stage 2 output (default: 32)
         "prune_layer": args.vscan_prune_layer,  # Layer for Stage 2 pruning (default: 16 for 7B)
     }
-    
-    use_text_tower = True if args.pruning_method in ("tsvol","tsvol_w","tsvol_llm","tsvol_w_llm","cover_prune_2","cover_prune_2_proj","cover_prune_2_rawattn","cover_prune_2_tv","cover_prune_3","cover_prune_3_anti","mmtok") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "star_pro" or args.pruning_method == "prefixvlm" else False
+
+    use_text_tower = True if args.pruning_method in ("tsvol","tsvol_w","tsvol_llm","tsvol_w_llm","cover_prune_2","cover_prune_2_proj","cover_prune_2_rawattn","cover_prune_2_tv","cover_prune_3","cover_prune_3_anti","mmtok") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "tops_experimental" or args.pruning_method == "tops_early" else False
 
     # 🎯 DART: 官方 LLM 层剪枝 (第K层, key-norm pivot + 文本引导). 视觉侧不剪枝.
     use_dart_llm = True if args.pruning_method in ("dart_llm", "dart_coverage") else False
@@ -329,16 +329,16 @@ def eval_model(args):
         pruning_method=args.pruning_method,
         visual_token_num=args.visual_token_num,
         use_fastv=use_fastv, fastv_config=fastv_config,
-        use_attn_cov_llm=use_attn_cov_llm, attn_cov_llm_config=attn_cov_llm_config,
+        use_mico_coverage_llm=use_mico_coverage_llm, mico_coverage_llm_config=mico_coverage_llm_config,
         use_sparsevlm=use_sparsevlm, sparsevlm_config=sparsevlm_config,
         use_d2p=use_d2p, d2p_config=d2p_config,
         use_svdvlm=use_svdvlm, svdvlm_config=svdvlm_config,
-        use_prefixvlm=use_prefixvlm, prefixvlm_config=prefixvlm_config,
+        use_tops_early=use_tops_early, tops_early_config=tops_early_config,
         use_holov2=use_holov2, holov2_config=holov2_config,
         use_idea=use_idea, idea_config=idea_config,
-        use_prefixvlm_2=use_prefixvlm_2, prefixvlm_2_config=prefixvlm_2_config,
+        use_tops=use_tops, tops_config=tops_config,
         use_pdrop=use_pdrop, pdrop_config=pdrop_config,
-        use_star=use_star, star_config=star_config,  # ⭐ STAR
+        use_tops_prototype=use_tops_prototype, tops_prototype_config=tops_prototype_config,  # ⭐ TOPSPrototype
         use_mustdrop=use_mustdrop, mustdrop_config=mustdrop_config,  # 🔥 MustDrop
         use_vscan=use_vscan, vscan_config=vscan_config,  # 🔬 VScan
         use_dart_llm=use_dart_llm, dart_config=dart_config,  # 🎯 DART LLM层
@@ -534,14 +534,14 @@ if __name__ == "__main__":
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--pruning_method", type=str, default=None)
     parser.add_argument("--visual_token_num", type=int, default=576)
-    
-    # ⭐ STAR specific arguments
+
+    # ⭐ TOPSPrototype specific arguments
     parser.add_argument("--num_latent", type=int, default=20,
-                        help="Number of latent tokens for STAR (default: 20)")
+                        help="Number of latent tokens for TOPSPrototype (default: 20)")
     parser.add_argument("--latent_pool_h", type=int, default=5,
-                        help="Height of latent pooling grid for STAR (default: 5)")
+                        help="Height of latent pooling grid for TOPSPrototype (default: 5)")
     parser.add_argument("--latent_pool_w", type=int, default=4,
-                        help="Width of latent pooling grid for STAR (default: 4)")
+                        help="Width of latent pooling grid for TOPSPrototype (default: 4)")
 
     # 🔬 VScan specific arguments
     parser.add_argument("--vscan_stage2_tokens", type=int, default=32,

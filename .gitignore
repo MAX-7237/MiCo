@@ -10,3 +10,5 @@ wandb/
 *.pt
 *.pth
 *.csv
+
+/paper-source/

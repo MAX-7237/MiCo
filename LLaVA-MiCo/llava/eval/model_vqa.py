@@ -40,15 +40,15 @@ def eval_model(args):
     d2p_config = {"T": args.visual_token_num}
     use_svdvlm = True if args.pruning_method == "svdvlm" else False
     svdvlm_config = {"T": args.visual_token_num}
-    use_prefixvlm = True if args.pruning_method == "prefixvlm" else False
-    prefixvlm_config = {"T": args.visual_token_num}
+    use_tops_early = True if args.pruning_method == "tops_early" else False
+    tops_early_config = {"T": args.visual_token_num}
     use_holov2 = True if args.pruning_method == "HoloV_2" else False
     # Official HoloV (pruning_method=HoloV/holov) is vision-side only; keep the standard Llama decoder.
     holov2_config = {"T": args.visual_token_num}
     use_idea = True if args.pruning_method == "Idea" else False
     idea_config = {"T": args.visual_token_num}
-    use_prefixvlm_2 = True if args.pruning_method in ("prefixvlm_2", "tops_iclr") else False
-    prefixvlm_2_config = {"T": args.visual_token_num, "disable_s2": args.pruning_method == "tops_iclr"}
+    use_tops = True if args.pruning_method in ("tops", "tops_iclr") else False
+    tops_config = {"T": args.visual_token_num, "disable_s2": args.pruning_method == "tops_iclr"}
     use_pdrop = True if args.pruning_method == "pdrop" else False
     pdrop_config = {"T": args.visual_token_num}
 
@@ -60,13 +60,13 @@ def eval_model(args):
         "prune_layer": args.vscan_prune_layer,  # Layer for Stage 2 pruning
     }
 
-    # STAR Configuration
-    use_star = True if args.pruning_method in ["star", "star_v2", "star_pro"] else False
-    star_config = {
+    # TOPSPrototype Configuration
+    use_tops_prototype = True if args.pruning_method in ["tops_prototype", "tops_variant2", "tops_experimental"] else False
+    tops_prototype_config = {
         "T": args.visual_token_num,
         "num_latent": 20,
         "latent_pool_size": (5, 4),
-        "mode": "star_pro" if args.pruning_method == "star_pro" else ("star_v2" if args.pruning_method == "star_v2" else "star"),
+        "mode": "tops_experimental" if args.pruning_method == "tops_experimental" else ("tops_variant2" if args.pruning_method == "tops_variant2" else "tops_prototype"),
         "debug": True,
     }
 
@@ -88,7 +88,7 @@ def eval_model(args):
         "T": args.visual_token_num,
     }
 
-    use_text_tower = True if args.pruning_method in ("tsvol","tsvol_w","tsvol_llm","tsvol_w_llm","cover_prune_3","cover_prune_3_anti") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "star_pro" or args.pruning_method == "prefixvlm" else False
+    use_text_tower = True if args.pruning_method in ("tsvol","tsvol_w","tsvol_llm","tsvol_w_llm","cover_prune_3","cover_prune_3_anti") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "tops_experimental" or args.pruning_method == "tops_early" else False
     tokenizer, model, image_processor, context_len = load_pretrained_model(
         model_path, args.model_base, model_name,
         pruning_method=args.pruning_method,
@@ -97,12 +97,12 @@ def eval_model(args):
         use_sparsevlm=use_sparsevlm, sparsevlm_config=sparsevlm_config,
         use_d2p=use_d2p, d2p_config=d2p_config,
         use_svdvlm=use_svdvlm, svdvlm_config=svdvlm_config,
-        use_prefixvlm=use_prefixvlm, prefixvlm_config=prefixvlm_config,
+        use_tops_early=use_tops_early, tops_early_config=tops_early_config,
         use_holov2=use_holov2, holov2_config=holov2_config,
         use_idea=use_idea, idea_config=idea_config,
-        use_prefixvlm_2=use_prefixvlm_2, prefixvlm_2_config=prefixvlm_2_config,
+        use_tops=use_tops, tops_config=tops_config,
         use_pdrop=use_pdrop, pdrop_config=pdrop_config,
-        use_star=use_star, star_config=star_config,
+        use_tops_prototype=use_tops_prototype, tops_prototype_config=tops_prototype_config,
         use_mustdrop=use_mustdrop, mustdrop_config=mustdrop_config,
         use_vscan=use_vscan, vscan_config=vscan_config,
         use_text_tower=use_text_tower,

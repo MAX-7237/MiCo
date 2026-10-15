@@ -43,7 +43,7 @@ SPARSEVLM_SPAN_SHAPE_28 = (300.0, 110.0, 35.0)
 def _layer_weight_distribution(num_layers: int, pruning_locs) -> list:
     """How many layers see each visual length, using the repo's convention.
 
-    FastV/DUET/STAR count the visual length *after* each layer's own prune, so a
+    FastV/DUET/TOPSPrototype count the visual length *after* each layer's own prune, so a
     pruning layer is counted at its post-prune length. Verified against FastV's
     documented identity `avg = (N*K + R*(L-K))/L` with K=2: weights `[2, 26]`.
 

@@ -89,7 +89,7 @@ class RefCOCOGroundingDataset(ImageBaseDataset):
         self.data = pd.DataFrame(rows)
         if self.data.empty or set(self.data['split']) != set(splits):
             raise ValueError(f'{dataset}: incomplete official split set {splits}')
-        smoke_rows = int(os.environ.get('STARPRO_SMOKE_ROWS', '0'))
+        smoke_rows = int(os.environ.get('TOPS_EXPERIMENTAL_SMOKE_ROWS', '0'))
         if smoke_rows > 0:
             # A smoke run validates the model-specific parser before spending GPUs on every expression.
             self.data = self.data.iloc[:smoke_rows].copy()

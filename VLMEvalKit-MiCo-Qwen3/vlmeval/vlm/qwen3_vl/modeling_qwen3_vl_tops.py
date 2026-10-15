@@ -19,7 +19,7 @@ Rebuild 2026-07-24 (branch qwen3vl-rebuild-20260724), REBUILD_SPEC patches appli
   P9  36-layer TOPS_SCHEDULE["8b"] average-budget rows
 Deliberately NOT applied here: P8's q_norm/k_norm sub-patch (this file already applies them,
 see `_compute_visual_token_importance`) and P9's `_compute_schedule_average` reporting fix
-(this file already charges the pre-prune count; only the star_v3 twin was wrong).
+(this file already charges the pre-prune count; only the tops_variant3 twin was wrong).
 """
 
 import os
@@ -49,7 +49,7 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
-# Self-identifying banner so a log tells you which build produced it (starpro-experiments-always-debug).
+# Self-identifying banner so a log tells you which build produced it (tops_experimental-experiments-always-debug).
 _REBUILD_REV = "qwen3vl-rebuild-20260724/tops/P2P3P4P5P6P8P9"
 
 # TOPS pruning schedule for Qwen3-VL
@@ -78,7 +78,7 @@ TOPS_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
         # CAVEAT (REBUILD_SPEC section 4.2, a human decision): 2a+5b=2T is one equation in two
         # unknowns. These triples encode a~0.60T, b~0.16T (equivalently: they preserve the
         # 28-layer reference's a/b ratio ~3.6). (156,40) at T=256 is equally exact. Kept identical
-        # to modeling_qwen3_vl_starv3.py so the two methods share one stated rule.
+        # to modeling_qwen3_vl_tops_variant3.py so the two methods share one stated rule.
         # The identity assumes stage 1 actually attains 2T, i.e. N >= 2T; with N < 2T the schedule
         # spends strictly less (safe, under budget).
         512: [(15, 307), (21, 82)],
@@ -120,7 +120,7 @@ class TOPSQwen3VLModel(_BASE_MODEL_CLS):
         # (measured against the shipped chat template), not 15 as in Qwen2.5-VL -- an 11-token window
         # shift that both protects 11 real image tokens from pruning and makes 11 real TEXT tokens
         # deletable. The window is pushed in explicitly by the wrapper; see the reference rationale in
-        # qwen2_5_vl/modeling_qwen2_5_vl_starv3.py:61-65.
+        # qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py:61-65.
         self.visual_token_positions: Optional[torch.LongTensor] = None
         # Retained: `visual_token_length` is NOT part of the removed offset heuristic. It is the
         # Stage-0 token count used by the three budget lines below and by the stage summary.
@@ -218,7 +218,7 @@ class TOPSQwen3VLModel(_BASE_MODEL_CLS):
     ) -> torch.Tensor:
         """Select informative text tokens as raters via normalized text-visual similarity.
 
-        Returns ABSOLUTE positions (not offsets), per qwen2_5_vl/modeling_qwen2_5_vl_starv3.py:191-221.
+        Returns ABSOLUTE positions (not offsets), per qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py:191-221.
         """
         seq_len = hidden_states.shape[1]
         non_visual = torch.ones(seq_len, dtype=torch.bool, device=hidden_states.device)
@@ -429,7 +429,7 @@ class TOPSQwen3VLModel(_BASE_MODEL_CLS):
             if layer_idx > current_layer:
                 total_tokens += (layer_idx - current_layer) * current_tokens
             # The prune layer RUNS BEFORE its prune, so it is charged its PRE-prune count.
-            # (Already correct here; it is the star_v3 twin that charged `target`.)
+            # (Already correct here; it is the tops_variant3 twin that charged `target`.)
             total_tokens += current_tokens
             current_tokens = float(min(current_tokens, target))
             current_layer = layer_idx + 1
@@ -612,7 +612,7 @@ class TOPSQwen3VLModel(_BASE_MODEL_CLS):
                 selected_t = self._rdc_greedy_select(attn, post_visual, retained_num, device)
 
                 # Step 4: Rebuild hidden_states from an explicit retain mask.
-                # (qwen2_5_vl/modeling_qwen2_5_vl_starv3.py:494-499 -- correct for any visual layout,
+                # (qwen2_5_vl/modeling_qwen2_5_vl_tops_variant3.py:494-499 -- correct for any visual layout,
                 # unlike the old `cat(prefix, kept, suffix)` which assumed one contiguous window.)
                 orig_seq_len = hidden_states.shape[1]
                 kept_visual_abs = visual_positions.index_select(0, selected_t)
@@ -669,7 +669,7 @@ class TOPSQwen3VLModel(_BASE_MODEL_CLS):
                     visual_pos_masks = visual_pos_masks[:, retain_token_indices.to(visual_pos_masks.device)]
 
                 # Re-map the surviving visual tokens into the NEW index space, so the second prune
-                # point (layer 21) addresses the right rows. qwen2_5_vl/..._starv3.py:510-512.
+                # point (layer 21) addresses the right rows. qwen2_5_vl/..._tops_variant3.py:510-512.
                 self.visual_token_positions = torch.searchsorted(retain_token_indices, kept_visual_abs)
 
                 prev_length = self.current_visual_length

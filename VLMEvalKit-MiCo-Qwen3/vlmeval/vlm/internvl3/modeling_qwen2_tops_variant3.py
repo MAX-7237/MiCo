@@ -1,21 +1,9 @@
 # coding=utf-8
 """
-STAR-Pro-QR Stage 2: progressive, query-aware visual token pruning for InternVL3.
-
-Pairs with the `star_qr` Stage-1 branch in modeling_internvl_chat.py
-(query-agnostic global residual QR coverage selection). Stage 2 scores the
-surviving visual tokens by an attention probe averaged over *every* suffix text
-token -- there is no text-rater selection, which is the one behavioural
-difference from the older `star_v3` module living next to this file.
-
-Ported verbatim from the isolated build
-/path/to/local-assets that produced the
-InternVL3-8B STAR-Pro-QR row of the main table (2026-07-24); only the class
-and schedule names are renamed so both methods can coexist in one repo.
+TOPS-Variant3 Stage 2: Progressive visual token pruning for InternVL3.
+Based on Qwen2.5-VL TOPS-Variant3 implementation.
 """
 
-import json
-import os
 from functools import partial
 from typing import Dict, List, Optional, Tuple, Union, Set
 import math
@@ -32,7 +20,7 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
-# STAR-Pro-QR 剪枝配置: InternVL3-8B (28 layers)
+# TOPS_VARIANT3 剪枝配置: InternVL3-8B (28 layers)
 #
 # 算法: initial = target × 2，三阶段剪枝
 #   Stage 1 (L0-11, 12层): 保持 initial tokens
@@ -41,19 +29,17 @@ logger = logging.get_logger(__name__)
 #
 # 约束: (initial×12 + a×4 + b×12) / 28 = target
 #      即: a + 3b = target
-STAR_QR_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "internvl3_8b": {
         512: [(12, 281), (16, 77)],   # initial=1024, (1024×12+281×4+77×12)/28=512
         256: [(12, 139), (16, 39)],   # initial=512,  (512×12+139×4+39×12)/28=256
-        # Match the current Qwen STAR-Pro-QR first-score schedule exactly:
-        # 256×11 + 53×10 + 34×7 = 3584; 3584 / 28 = 128.
-        128: [(11, 53), (21, 34)],
+        128: [(12, 70), (16, 19)],    # initial=256,  (256×12+70×4+19×12)/28≈128
     },
 }
 
-class StarQRQwen2Model(Qwen2Model):
+class TOPSVariant3Qwen2Model(Qwen2Model):
     """
-    STAR-V3 Stage 2 implementation for InternVL3.
+    TOPS-Variant3 Stage 2 implementation for InternVL3.
     Progressive pruning at specific decoder layers with multi-token text guidance.
     """
 
@@ -75,22 +61,16 @@ class StarQRQwen2Model(Qwen2Model):
             logger.warning(f"Unknown model scale with {config.num_hidden_layers} layers, defaulting to internvl3_8b")
 
         # Load pruning schedule
-        schedule = STAR_QR_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
-        # Ablation hook: STAR_QR_SCHEDULE_JSON='[[12,139],[16,39]]' overrides the
-        # built-in schedule for this budget. Unset -> built-in, byte-identical.
-        _sched_env = os.environ.get("STAR_QR_SCHEDULE_JSON", "").strip()
-        if _sched_env:
-            schedule = [tuple(pair) for pair in json.loads(_sched_env)]
-            print(f"[STAR-QR] schedule overridden from env: {schedule}", flush=True)
+        schedule = TOPS_VARIANT3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
         if schedule is None:
             self.pruning_layers: Dict[int, int] = {}
-            logger.warning(f"No STAR-V3 schedule for target={visual_token_num}, progressive pruning disabled")
+            logger.warning(f"No TOPS-Variant3 schedule for target={visual_token_num}, progressive pruning disabled")
         else:
             self.pruning_layers = {layer_idx: target for layer_idx, target in schedule}
 
         self.reset_state()
 
-        print(f"[STAR-V3 StarQRQwen2Model Init]")
+        print(f"[TOPS-Variant3 TOPSVariant3Qwen2Model Init]")
         print(f"  Model scale: {self.scale} ({config.num_hidden_layers} layers)")
         print(f"  Target visual tokens (final): {self.target_visual_tokens}")
         print(f"  Stage 1 expected output: {self.stage1_keep_tokens} (target × 2)")
@@ -142,6 +122,38 @@ class StarQRQwen2Model(Qwen2Model):
         else:
             raise ValueError(f"Unexpected position embedding dimension: {pos_emb.dim()}")
 
+    def _select_text_raters(
+        self,
+        hidden_states: torch.Tensor,
+        visual_start: int,
+        visual_end: int,
+    ) -> torch.Tensor:
+        """
+        Select important text tokens as raters for visual token importance.
+        Based on text-visual similarity.
+        """
+        text_hidden = hidden_states[:, visual_end:, :]
+        if text_hidden.size(1) == 0:
+            return hidden_states.new_tensor([hidden_states.shape[1] - 1], dtype=torch.long)
+
+        visual_hidden = hidden_states[:, visual_start:visual_end, :]
+        text_norm = F.normalize(text_hidden, dim=-1)
+        visual_norm = F.normalize(visual_hidden, dim=-1)
+
+        # [batch, text_len, visual_len]
+        text_visual_sim = torch.matmul(text_norm, visual_norm.transpose(1, 2))
+        text_importance = text_visual_sim.mean(dim=-1)  # Average over visual tokens
+        if text_importance.dim() == 2:
+            text_importance = text_importance.mean(dim=0)  # Aggregate across batch
+
+        mean_importance = text_importance.mean()
+        selected = torch.nonzero(text_importance > mean_importance, as_tuple=False).squeeze(-1)
+        if selected.numel() == 0:
+            keep = max(1, text_importance.numel() // 2)
+            selected = text_importance.topk(keep).indices
+
+        return selected
+
     def _compute_visual_token_importance(
         self,
         hidden_states: torch.Tensor,
@@ -151,8 +163,8 @@ class StarQRQwen2Model(Qwen2Model):
         visual_end: int,
     ) -> torch.Tensor:
         """
-        Compute visual token importance by averaging the attention probe over
-        every suffix text token. There is no text-rater selection.
+        Compute visual token importance using multi-token text guidance.
+        Uses attention probe with selected text rater tokens.
         """
         self_attn = decoder_layer.self_attn
 
@@ -197,18 +209,11 @@ class StarQRQwen2Model(Qwen2Model):
         query_states = (query_states * cos) + (self._rotate_half(query_states) * sin)
         key_states = (key_states * cos) + (self._rotate_half(key_states) * sin)
 
-        text_positions = torch.arange(
-            visual_end,
-            seq_len,
-            device=hidden_states.device,
-            dtype=torch.long,
-        )
-        if text_positions.numel() == 0:
-            text_positions = torch.tensor(
-                [seq_len - 1],
-                device=hidden_states.device,
-                dtype=torch.long,
-            )
+        # Select text raters
+        text_rater_indices = self._select_text_raters(hidden_states, visual_start, visual_end)
+        text_positions = text_rater_indices + visual_end
+        text_positions = text_positions.clamp(max=seq_len - 1)
+
         query_raters = torch.index_select(query_states, 2, text_positions)
         key_visual = key_states[:, :, visual_start:visual_end, :]
 
@@ -219,11 +224,6 @@ class StarQRQwen2Model(Qwen2Model):
         attn_weights = F.softmax(attn_scores, dim=-1, dtype=torch.float32).to(query_states.dtype)
         attn_weights = attn_weights.mean(dim=2).mean(dim=1)  # Avg over raters and heads
         visual_importance = attn_weights.mean(dim=0)  # Aggregate across batch
-        print(
-            f"[STAR-INTERNVL S2] text_aggregation=average_all "
-            f"text_tokens={text_positions.numel()}",
-            flush=True,
-        )
 
         return visual_importance
 
@@ -240,7 +240,7 @@ class StarQRQwen2Model(Qwen2Model):
         cache_position: Optional[torch.LongTensor] = None,
         **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
     ) -> BaseModelOutputWithPast:
-        """Forward with STAR-V3 Stage 2 progressive pruning."""
+        """Forward with TOPS-Variant3 Stage 2 progressive pruning."""
 
         # Detect if this is a new generation (reset state)
         def _is_empty_cache(cache):
@@ -308,7 +308,7 @@ class StarQRQwen2Model(Qwen2Model):
             self.stage1_actual_tokens = detected_visual_len
             self.prefill_done = True
 
-            print(f"\n[STAR-V3 Stage 2 Init]")
+            print(f"\n[TOPS-Variant3 Stage 2 Init]")
             print(f"  Detected visual tokens: {detected_visual_len}")
             print(f"  Expected from Stage 1: {self.stage1_keep_tokens}")
             print(f"  System prompt length: {self.system_prompt_length}")
@@ -340,7 +340,7 @@ class StarQRQwen2Model(Qwen2Model):
                     output_attentions, use_cache, cache_position, position_embeddings,
                 )
             else:
-                # Check if we should perform STAR-V3 progressive pruning at this layer
+                # Check if we should perform TOPS-Variant3 progressive pruning at this layer
                 should_prune = (
                     star_enabled and
                     layer_idx in self.pruning_layers and
@@ -349,11 +349,11 @@ class StarQRQwen2Model(Qwen2Model):
                 )
 
                 if should_prune:
-                    # STAR-V3 Progressive Pruning at this layer
+                    # TOPS-Variant3 Progressive Pruning at this layer
                     target = self.pruning_layers[layer_idx]
                     device = hidden_states.device
 
-                    print(f"\n[STAR-V3 Stage 2] Layer {layer_idx}: {self.current_visual_length} → {target}")
+                    print(f"\n[TOPS-Variant3 Stage 2] Layer {layer_idx}: {self.current_visual_length} → {target}")
                     print(f"[DEBUG] BEFORE pruning: shape={hidden_states.shape}")
 
                     visual_start = self.system_prompt_length
@@ -473,19 +473,15 @@ class StarQRQwen2Model(Qwen2Model):
         # Emit summary once
         if seq_length > 1 and self.prefill_done and not self._stage_summary_emitted:
             print(f"\n{'='*80}")
-            print(f"[STAR-V3 Summary]")
+            print(f"[TOPS-Variant3 Summary]")
             print(f"  Stage 0: {self.stage0_visual_tokens} tokens (original)")
             if self.stage1_actual_tokens is not None:
-                print(f"  Stage 1: {self.stage1_actual_tokens} tokens (global QR output)")
+                print(f"  Stage 1: {self.stage1_actual_tokens} tokens (THCP output)")
             if self.stage2_events:
                 print(f"  Stage 2 pruning events:")
                 for layer, before, after in self.stage2_events:
                     print(f"    Layer {layer}: {before} → {after}")
                 print(f"  Final visual tokens: {self.current_visual_length}")
-                print(
-                    f"  Layer-average tokens (schedule, stage1="
-                    f"{self.stage1_actual_tokens}): {self.visual_token_num:.2f}"
-                )
             else:
                 print(f"  Stage 2: No pruning (schedule missing or already at target)")
             print(f"{'='*80}\n")
@@ -499,13 +495,13 @@ class StarQRQwen2Model(Qwen2Model):
         )
 
 
-class StarQRQwen2ForCausalLM(Qwen2ForCausalLM):
-    """Wrapper for Qwen2ForCausalLM with STAR-V3 Stage 2 decoder."""
+class TOPSVariant3Qwen2ForCausalLM(Qwen2ForCausalLM):
+    """Wrapper for Qwen2ForCausalLM with TOPS-Variant3 Stage 2 decoder."""
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config, visual_token_num: int, num_image_token: int = 256):
         super().__init__(config)
-        self.model = StarQRQwen2Model(config, visual_token_num, num_image_token)
+        self.model = TOPSVariant3Qwen2Model(config, visual_token_num, num_image_token)
 
     def set_system_prompt_length(self, length: int):
         """Set system prompt length for pruning calculations."""

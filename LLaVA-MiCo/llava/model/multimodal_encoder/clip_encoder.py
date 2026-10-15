@@ -44,16 +44,16 @@ class CLIPVisionTower(nn.Module):
         vision_tower_with_projection = CLIPVisionModelWithProjection.from_pretrained(
             self.vision_tower_name
         )
-        
+
         # 如果需要移动到特定设备
         if device_map is not None and isinstance(device_map, str):
             device = torch.device(device_map if device_map != 'auto' else 'cuda')
             vision_tower_with_projection = vision_tower_with_projection.to(device)
-        
+
         self.vision_tower.visual_projection = vision_tower_with_projection.visual_projection
 
         self.text_tokenizer = CLIPTokenizerFast.from_pretrained(self.vision_tower_name)
-        
+
         # 同样处理 text tower
         self.text_tower = CLIPTextModelWithProjection.from_pretrained(
             self.vision_tower_name
@@ -61,7 +61,7 @@ class CLIPVisionTower(nn.Module):
         if device_map is not None and isinstance(device_map, str):
             device = torch.device(device_map if device_map != 'auto' else 'cuda')
             self.text_tower = self.text_tower.to(device)
-        
+
         self.text_tower.requires_grad_(False)
 
         self.max_position_embeddings = self.text_tower.config.max_position_embeddings
@@ -149,7 +149,7 @@ class CLIPVisionTower(nn.Module):
         else:
             image_stream = torch.cuda.Stream()
             text_stream = torch.cuda.Stream()
-            
+
             with torch.cuda.stream(image_stream):
                 # texts= path also needs CLS attention (for tsvol_w weighting)
                 want_attn = output_attentions or (texts is not None)
@@ -164,7 +164,7 @@ class CLIPVisionTower(nn.Module):
                     attn = image_outputs[1]                # (B, heads, N) CLS->patch attention
                     image_outputs_feat = feat              # tensor used later for post_layernorm
                     if output_attentions:
-                        # legacy 4-tuple path (scope / fastervlm / prefixvlm / ...)
+                        # legacy 4-tuple path (scope / fastervlm / tops_early / ...)
                         image_features = (
                             feat.to(images.dtype),
                             attn.to(images.dtype),

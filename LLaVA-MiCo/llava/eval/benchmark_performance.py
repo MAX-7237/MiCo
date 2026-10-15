@@ -1,5 +1,5 @@
 """
-Unified Performance Benchmarking Script for STAR-LLaVA
+Unified Performance Benchmarking Script for TOPSPrototype-LLaVA
 
 This script provides comprehensive performance testing including:
 - Prefill time and Decode time
@@ -14,7 +14,7 @@ Usage:
         --question-file /path/to/questions.jsonl \
         --image-folder /path/to/images \
         --answers-file /path/to/output.jsonl \
-        --pruning_method star_pro \
+        --pruning_method tops_experimental \
         --visual_token_num 128 \
         --output-json performance_report.json
 """
@@ -174,19 +174,19 @@ def benchmark_performance(args):
     use_pdrop = True if args.pruning_method == "pdrop" else False
     pdrop_config = {"T": args.visual_token_num}
 
-    use_star = True if args.pruning_method in ["star", "star_v2", "star_pro"] else False
-    star_config = {
+    use_tops_prototype = True if args.pruning_method in ["tops_prototype", "tops_variant2", "tops_experimental"] else False
+    tops_prototype_config = {
         "T": args.visual_token_num,
         "num_latent": args.num_latent,
         "latent_pool_size": (args.latent_pool_h, args.latent_pool_w),
-        "mode": "star_pro" if args.pruning_method == "star_pro" else ("star_v2" if args.pruning_method == "star_v2" else "star"),
+        "mode": "tops_experimental" if args.pruning_method == "tops_experimental" else ("tops_variant2" if args.pruning_method == "tops_variant2" else "tops_prototype"),
         "debug": False,  # Disable debug prints for benchmarking
     }
 
-    use_text_tower = True if args.pruning_method in ("cover_prune_3", "cover_prune_3_anti") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "star_pro" else False
+    use_text_tower = True if args.pruning_method in ("cover_prune_3", "cover_prune_3_anti") or args.pruning_method == "trim" or "cdp3" in args.pruning_method or "thcp" in args.pruning_method or args.pruning_method == "tops_experimental" else False
 
     print(f"\n{'='*70}")
-    print(f"Performance Benchmarking for STAR-LLaVA")
+    print(f"Performance Benchmarking for TOPSPrototype-LLaVA")
     print(f"{'='*70}")
     print(f"Model: {model_name}")
     print(f"Pruning method: {args.pruning_method}")
@@ -202,7 +202,7 @@ def benchmark_performance(args):
         use_fastv=use_fastv, fastv_config=fastv_config,
         use_sparsevlm=use_sparsevlm, sparsevlm_config=sparsevlm_config,
         use_pdrop=use_pdrop, pdrop_config=pdrop_config,
-        use_star=use_star, star_config=star_config,
+        use_tops_prototype=use_tops_prototype, tops_prototype_config=tops_prototype_config,
         use_text_tower=use_text_tower,
     )
 
@@ -399,7 +399,7 @@ def benchmark_performance(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Performance benchmarking for STAR-LLaVA")
+    parser = argparse.ArgumentParser(description="Performance benchmarking for TOPSPrototype-LLaVA")
 
     # Model arguments
     parser.add_argument("--model-path", type=str, required=True, help="Path to model")
@@ -413,17 +413,17 @@ if __name__ == "__main__":
 
     # Pruning arguments
     parser.add_argument("--pruning_method", type=str, default=None,
-                        help="Pruning method: fastv, sparsevlm, pdrop, star, star_v2, star_pro")
+                        help="Pruning method: fastv, sparsevlm, pdrop, tops_prototype, tops_variant2, tops_experimental")
     parser.add_argument("--visual_token_num", type=int, default=576,
                         help="Target number of visual tokens")
 
-    # STAR specific arguments
+    # TOPSPrototype specific arguments
     parser.add_argument("--num_latent", type=int, default=20,
-                        help="Number of latent tokens for STAR")
+                        help="Number of latent tokens for TOPSPrototype")
     parser.add_argument("--latent_pool_h", type=int, default=5,
-                        help="Height of latent pooling grid for STAR")
+                        help="Height of latent pooling grid for TOPSPrototype")
     parser.add_argument("--latent_pool_w", type=int, default=4,
-                        help="Width of latent pooling grid for STAR")
+                        help="Width of latent pooling grid for TOPSPrototype")
 
     # Generation arguments
     parser.add_argument("--temperature", type=float, default=0.2)

@@ -116,7 +116,7 @@ class DARTQwen3VLModel(_BASE_MODEL_CLS):
 
     def set_visual_token_positions(self, positions: Optional[torch.LongTensor]) -> None:
         """Absolute positions (post-stage-1 sequence) of the surviving image tokens. Shared window
-        API with fastv / star_v3 / tops -- an explicit index vector, correct for multi-image prompts."""
+        API with fastv / tops_variant3 / tops -- an explicit index vector, correct for multi-image prompts."""
         if positions is None:
             self.visual_token_positions = None
             self._visual_positions_fresh = False

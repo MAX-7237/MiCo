@@ -2,7 +2,7 @@
 """SparseVLM (text-guided, decoder-internal, multi-stage) visual-token pruning for Qwen3-VL.
 
 Ported from the LLaVA reference `llava/model/language_model/modeling_llama_sparsevlm.py`
-(LLaVA-TOPS-ICLR / LLaVA-STAR-Pro2-sparsevlm-audit), rebuilt on the Qwen3-VL FastV/DART
+(LLaVA-TOPS-ICLR / LLaVA-TOPSPrototype-Pro2-sparsevlm-audit), rebuilt on the Qwen3-VL FastV/DART
 skeleton so it inherits the same Qwen3-specific correctness fixes:
 
   * P2 -- recompute RoPE from the pruned position_ids; never gather Qwen3-VL cos/sin on dim 2

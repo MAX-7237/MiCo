@@ -41,7 +41,7 @@ def inner_weighted_raw_cls_select(
     features: torch.Tensor,
     raw_cls_attn: torch.Tensor,
     keep: int,
-    attn_h: bool = False,
+    mico: bool = False,
 ) -> torch.Tensor:
     """Greedy keep-`keep` by Σ_v raw_cls[v] * max(0, κ(v,i) − m_v). CLS is not min-maxed."""
     n_tokens = features.shape[0]
@@ -49,7 +49,7 @@ def inner_weighted_raw_cls_select(
     feats = F.normalize(features.float(), dim=-1)
     sim = (feats @ feats.t()).clamp(min=0.0)
     w = raw_cls_attn.float().clamp(min=0.0)
-    if attn_h:
+    if mico:
         # Keep H in the pre-merger ViT space used by this S1 selector; the
         # projector output must not leak into a ViT-space ablation.
         h = features.detach().float().norm(dim=-1)
@@ -77,7 +77,7 @@ def inner_weighted_raw_cls_select(
     return mask
 
 
-class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
+class MiCoCoverageVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
     """Single post-layer prune; legacy default is TOPS-first; S2 = text_attn×coverage."""
 
     def __init__(
@@ -86,7 +86,7 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
         visual_token_num: int,
         k_layer: int | None = None,
         method_name: str | None = None,
-        attn_h: bool = False,
+        mico: bool = False,
         single_stage: bool = False,
     ):
         super().__init__(config, visual_token_num)
@@ -96,9 +96,9 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
         except (TypeError, ValueError) as exc:
             raise ValueError(f"visual_token_num must be an integer, got {visual_token_num!r}") from exc
         self.single_stage = bool(single_stage)
-        self.attn_h = bool(attn_h)
+        self.mico = bool(mico)
         self.stage1_multiplier = 1 if self.single_stage else 2
-        if not self.single_stage and method_name == "attn_H_cov_vit_proj_llm_6":
+        if not self.single_stage and method_name == "mico_6":
             # Only this ablation arm consumes the opt-in; existing methods retain their budgets.
             raw_mult = os.environ.get("MICO_STAGE1_MULT", "2")
             try:
@@ -111,14 +111,14 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
                 self.stage1_keep_tokens = max(1, t_avg * self.stage1_multiplier)
                 self.stage1_expected_tokens = min(self.visual_token_length, self.stage1_keep_tokens)
         if self.single_stage:
-            # attn_cov_vit_proj / attn_H_cov_vit_proj: S1 alone prunes straight to T, so there is no
+            # mico_coverage_vit_proj / mico_s1: S1 alone prunes straight to T, so there is no
             # post-layer locus to size. K is deliberately NOT defaulted here -- falling through to
             # tops_first_prune_layer would re-introduce a second cut the method name does not name.
             self.K = None
-            self._attn_cov_log_name = method_name or "attn_cov_vit_proj"
+            self._mico_coverage_log_name = method_name or "mico_coverage_vit_proj"
             self.pruning_layers: Dict[int, int] = {}
             print(
-                f"[{self._attn_cov_log_name}] scale={self.scale} L={n_layers} single-stage: "
+                f"[{self._mico_coverage_log_name}] scale={self.scale} L={n_layers} single-stage: "
                 f"S1 -> T={t_avg}, S2 disabled (no in-LLM prune)"
             )
             return
@@ -129,8 +129,8 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
         # Explicit-K variants must retain their ViT-space method identity in
         # logs; otherwise a valid ViT S1 run looks indistinguishable from a
         # projector-space arm during provenance checks.
-        self._attn_cov_log_name = method_name or (
-            "attn_cov_vit_proj_llm_12" if k_layer is None else f"attn_cov_proj_llm_{self.K}"
+        self._mico_coverage_log_name = method_name or (
+            "mico_coverage_vit_proj_llm_12" if k_layer is None else f"mico_coverage_proj_llm_{self.K}"
         )
         n_enter = max(1, t_avg * self.stage1_multiplier)
         keep_r = compute_keep_from_avg(t_avg, n_enter, self.K, n_layers)
@@ -138,7 +138,7 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
         self.pruning_layers = {self.K: keep_r}
         self.T_avg = t_avg
         print(
-            f"[{self._attn_cov_log_name}] scale={self.scale} L={n_layers} "
+            f"[{self._mico_coverage_log_name}] scale={self.scale} L={n_layers} "
             f"S2=post-layer L{self.K} N_enter={n_enter} T={t_avg} keep={keep_r} "
             f"(R=(T*L-K*N_enter)/(L-K), not TOPS scheduled keep)"
         )
@@ -166,14 +166,14 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
         """Inner-weighted text_attn×coverage. Raw attn (no min-max); no TOPS diversity term."""
         if self.single_stage:
             raise RuntimeError(
-                f"{self._attn_cov_log_name} is single-stage: S2 selection must never be reached. "
+                f"{self._mico_coverage_log_name} is single-stage: S2 selection must never be reached. "
                 "pruning_layers is empty, so an S2 call means the prune gate was misconfigured."
             )
         vis = post_hidden[0]
         w = attn.detach().float().reshape(-1).clamp(min=0.0)
         if w.numel() != vis.shape[0]:
             raise ValueError(f"S2 attn {tuple(w.shape)} != visual {vis.shape[0]}")
-        if self.attn_h:
+        if self.mico:
             # S2's H is post-layer because the K cut is performed after that
             # decoder layer; this intentionally differs from pre-merger S1 H.
             w = w * vis.detach().float().norm(dim=-1)
@@ -200,12 +200,12 @@ class AttnCovVitProjLlm12Qwen3VLModel(CoverPrune2Qwen3VLModel):
             selected.append(idx)
             available[idx] = False
             max_cov = torch.maximum(max_cov, sim[idx])
-        log_i = getattr(self, "_attn_cov_12_s2_log_i", 0)
-        self._attn_cov_12_s2_log_i = log_i + 1
+        log_i = getattr(self, "_mico_coverage_12_s2_log_i", 0)
+        self._mico_coverage_12_s2_log_i = log_i + 1
         if log_i == 0 or os.environ.get("ENABLE_DEBUG", "0") == "1":
             print(
-                f"[{self._attn_cov_log_name}] S2 L{self.K} N={vis.shape[0]} "
-                f"keep={keep} (text_attn{'*|h|' if self.attn_h else ''}*coverage)",
+                f"[{self._mico_coverage_log_name}] S2 L{self.K} N={vis.shape[0]} "
+                f"keep={keep} (text_attn{'*|h|' if self.mico else ''}*coverage)",
                 flush=True,
             )
         return torch.tensor(selected, device=device, dtype=torch.long)

@@ -123,7 +123,7 @@ class LlavaMetaModel:
         self.config.mm_vision_select_feature = mm_vision_select_feature
         self.config.mm_patch_merge_type = mm_patch_merge_type
 
-        
+
         if not hasattr(self.config, 'add_faster_video'):
             if model_args.add_faster_video:
                 embed_std = 1 / torch.sqrt(torch.tensor(self.config.hidden_size, dtype=self.dtype))
@@ -218,7 +218,7 @@ class LlavaMetaForCausalLM(ABC):
         return image_feature
 
     def encode_images(self, images):
-        if self.pruning_method in ('fastervlm', 'cdpruner', 'tops', 'attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
+        if self.pruning_method in ('fastervlm', 'cdpruner', 'tops', 'mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
             image_features, image_attentions, image_keys = self.get_model().get_vision_tower()(images, output_attentions=True)
         else:
             image_features = self.get_model().get_vision_tower()(images)
@@ -228,7 +228,7 @@ class LlavaMetaForCausalLM(ABC):
             self._mmtok_preprojector = image_features
         image_features = self.get_model().mm_projector(image_features)
         return image_features, image_attentions, image_keys
-    
+
     def encode_multimodals(self, videos_or_images, video_idx_in_batch, split_sizes=None):
         videos_or_images_features = self.get_model().get_vision_tower()(videos_or_images)
         per_videos_or_images_features = torch.split(videos_or_images_features, split_sizes, dim=0)  # tuple, (dim_1, 576, 4096)
@@ -237,7 +237,7 @@ class LlavaMetaForCausalLM(ABC):
         cur_mm_spatial_pool_stride = self.config.mm_spatial_pool_stride
 
         for idx, feat in enumerate(per_videos_or_images_features):
-            
+
             feat = self.get_model().mm_projector(feat)
             faster_video_feature = 0
             slower_img_feat = 0
@@ -308,10 +308,10 @@ class LlavaMetaForCausalLM(ABC):
 
         rank0_print(f"[prune-debug] method={self.pruning_method}, visual_token_num={self.visual_token_num}")
 
-        if self.pruning_method in ('attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
+        if self.pruning_method in ('mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
             if input_ids.shape[0] != 1 or modalities != ['video'] or len(images) != 1:
-                raise ValueError('attn_cov Video requires one video per batch and modalities=[video]')
-            self._attn_cov_pending = None
+                raise ValueError('mico_coverage Video requires one video per batch and modalities=[video]')
+            self._mico_coverage_pending = None
 
         # Force flat mode if using pruning
         if self.pruning_method != 'vanilla':
@@ -391,7 +391,7 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                    
+
                     elif self.pruning_method == 'trim':
                         rank0_print("="*60)
                         rank0_print(f"✓ [TRIM] 开始执行剪枝")
@@ -420,7 +420,7 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                    
+
                     elif self.pruning_method == 'dart':
                         rank0_print("="*60)
                         rank0_print(f"✓ [DART] 开始执行剪枝")
@@ -452,7 +452,7 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                    
+
                     elif self.pruning_method == 'divprune':
                         rank0_print("="*60)
                         rank0_print(f"✓ [DivPrune] 开始执行剪枝")
@@ -476,7 +476,7 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                    
+
                     elif self.pruning_method == 'dppruner':
                         rank0_print("="*60)
                         rank0_print(f"✓ [DPPruner] 开始执行剪枝")
@@ -507,7 +507,7 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                    
+
                     elif self.pruning_method == 'mmtok':
                         if len(image_features) != 1 or video_idx_in_batch != [0]:
                             raise ValueError('MMTok video port supports exactly one video per request')
@@ -551,9 +551,9 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
 
-                    elif self.pruning_method == 'star_v3':
+                    elif self.pruning_method == 'tops_variant3':
                         rank0_print("="*60)
-                        rank0_print(f"✓ [STAR-V3] 开始执行剪枝 (Adaptive THCP)")
+                        rank0_print(f"✓ [TOPS-Variant3] 开始执行剪枝 (Adaptive THCP)")
                         rank0_print(f"  剪枝前: 每帧token数 = {N}, 总帧数 = {T}, 总tokens = {T*N}")
 
                         # 1. Adaptive target (key innovation)
@@ -595,11 +595,11 @@ class LlavaMetaForCausalLM(ABC):
                         rank0_print(f"  剪枝后: 每帧token数 = {image_feature.shape[1]}, 总tokens = {T*image_feature.shape[1]}")
                         rank0_print(f"  压缩率: {(1 - image_feature.shape[1]/N)*100:.1f}% (减少了 {N - image_feature.shape[1]} tokens/frame)")
                         rank0_print("="*60)
-                        
-                    elif self.pruning_method in ('attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
-                        from llava.model.language_model.attn_cov_video import weighted_coverage_select, pack_video, hidden_l2_weights
+
+                    elif self.pruning_method in ('mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
+                        from llava.model.language_model.mico_coverage_video import weighted_coverage_select, pack_video, hidden_l2_weights
                         if image_attention is None:
-                            raise ValueError('attn_cov S1 requires actual SigLIP attention')
+                            raise ValueError('mico_coverage S1 requires actual SigLIP attention')
                         raw_weights = image_attention.mean(dim=1) if image_attention.ndim == 3 else image_attention
                         if raw_weights.shape != (T, N):
                             raise ValueError(f'wrong SigLIP attention shape: {raw_weights.shape}, expected {(T, N)}')
@@ -607,13 +607,13 @@ class LlavaMetaForCausalLM(ABC):
                         masks = torch.zeros((T, N), dtype=torch.bool, device=device)
                         for frame in range(T):
                             weights = raw_weights[frame]
-                            if self.pruning_method == 'attn_H_cov_proj_llm_12':
+                            if self.pruning_method == 'mico_projected_llm_12':
                                 # H is the raw L2 norm at the pooled projector prune site.
                                 weights = hidden_l2_weights(image_feature[frame], weights)
                             indices = weighted_coverage_select(image_feature[frame], weights, n_keep)
                             masks[frame, indices] = True
                         packed, metadata = pack_video(image_feature, masks, 'flat')
-                        self._attn_cov_pending = metadata
+                        self._mico_coverage_pending = metadata
                         new_image_features.append(packed)
                         continue
 
@@ -761,14 +761,14 @@ class LlavaMetaForCausalLM(ABC):
                                 image_feature = torch.cat(concat_slow_fater_token)
 
                                 # print("!!!!!!!!!!!!")
-                        
+
                             new_image_features.append(image_feature)
                         elif mm_newline_position == "frame":
                             # Frame-wise
                             image_feature = self.add_token_per_frame(image_feature)
 
                             new_image_features.append(image_feature.flatten(0, 1))
-                            
+
                         elif mm_newline_position == "one_token":
                             # one-token
                             image_feature = image_feature.flatten(0, 1)
@@ -777,7 +777,7 @@ class LlavaMetaForCausalLM(ABC):
                                     image_feature,
                                     self.model.image_newline[None].to(image_feature.device)
                                 ), dim=0)
-                            new_image_features.append(image_feature)      
+                            new_image_features.append(image_feature)
                         elif mm_newline_position == "no_token":
                             new_image_features.append(image_feature.flatten(0, 1))
                         else:
@@ -914,10 +914,10 @@ class LlavaMetaForCausalLM(ABC):
                     except IndexError:
                         cur_image_features = image_features[cur_image_idx - 1]
                     cur_image_idx += 1
-                    if self.pruning_method in ('attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
-                        if num_images != 1 or i != 0 or self._attn_cov_pending is None:
-                            raise ValueError('attn_cov requires exactly one visual sentinel and one packed video')
-                        metadata = self._attn_cov_pending
+                    if self.pruning_method in ('mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
+                        if num_images != 1 or i != 0 or self._mico_coverage_pending is None:
+                            raise ValueError('mico_coverage requires exactly one visual sentinel and one packed video')
+                        metadata = self._mico_coverage_pending
                         visual_start = sum(part.shape[0] for part in cur_new_input_embeds)
                         self.model._tops_request_id = getattr(self, '_tops_request_id', None)
                         self.model.set_visual_layout(visual_start, len(cur_image_features),
@@ -937,9 +937,9 @@ class LlavaMetaForCausalLM(ABC):
         tokenizer_model_max_length = getattr(self.config, "tokenizer_model_max_length", None)
         # rank_print("Finishing Inserting")
 
-        if self.pruning_method in ('attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
+        if self.pruning_method in ('mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
             if tokenizer_model_max_length is not None and any(len(x) > tokenizer_model_max_length for x in new_input_embeds):
-                raise ValueError('attn_cov video prompt would be truncated; increase explicit context limit')
+                raise ValueError('mico_coverage video prompt would be truncated; increase explicit context limit')
         new_input_embeds = [x[:tokenizer_model_max_length] for x, modality in zip(new_input_embeds, modalities)]
         new_labels = [x[:tokenizer_model_max_length] for x, modality in zip(new_labels, modalities)]
         # TODO: Hard code for control loss spike

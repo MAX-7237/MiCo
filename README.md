@@ -1,113 +1,116 @@
+<div align="center">
+
+<img src="assets/mascot.png" width="96" alt="MiCo mascot" />
+
 # MiCo
 
-MiCo source release for visual token pruning in image and video language models.
+### Mutual Information Coverage Optimization through Semantic Erasure Modeling<br>for Efficient MLLM Inference
 
-**Status: source preview.** The implementations and evaluation entry points are included, but clean-environment installation, GPU inference, and benchmark reproduction have not yet been completed for this release. Dependency files are candidate pinned configurations, not validated lockfiles. Qwen3.5-9B is included in `Qwen3.5-MiCo`: its recovered core passes seven native random-weight CPU tests in the recorded environment. Full 9B GPU inference and benchmark reproduction remain pending.
+**Training-free visual token pruning · Image & video understanding · 7B–13B models**
 
-## Implementations
+[Paper](https://arxiv.org/abs/2609.34330) · [Method](#method) · [Results](#results) · [Quick start](#quick-start) · [Evaluation guide](docs/RUNNING.md)
 
-| Directory | Models | MiCo internal method |
-| --- | --- | --- |
-| `LLaVA-MiCo` | LLaVA-1.5-7B / 13B | `attn_H_cov_vit_proj_llm_7` / `_8` |
-| `LLaVA-MiCo` | LLaVA-NeXT (Vicuna) 7B / 13B | `attn_H_cov_vit_proj_llm_7` / `_14` |
-| `LLaVA-Video-MiCo` | LLaVA-Video-7B-Qwen2 | `attn_H_cov_proj_llm_12` |
-| `VLMEvalKit-MiCo` | Qwen2.5-VL-7B-Instruct / InternVL3-8B | `attn_H_cov_vit_proj_llm_2` / `_4` |
-| `VLMEvalKit-MiCo-Qwen3` | Qwen3-VL-8B-Instruct | `attn_H_cov_vit_proj_llm_6` |
+</div>
 
-The public `run_mico.py` launchers select these existing implementation IDs. The suffix identifies the pruning layer; it is not the token budget. Image-model S1-only evaluation uses `--variant mico-s1`. Video S1-only is not exposed. Other historical method names and baselines remain where required by framework imports; they should not be treated as aliases for MiCo.
+---
 
-For image models, stage 1 retains up to `min(N, 2T)` visual tokens. Stage 2 performs a post-layer-K cut with target `R = (T*L - K*N_enter)/(L-K)`, subject to implementation rounding and clamping. Video uses its own per-frame token layout and budget.
+MiCo selects a compact set of visual evidence through **two stages of mutual information coverage optimization**: a representative visual candidate pool before the language model, followed by task-aware refinement inside it.
 
-## Qwen3.5-9B
+<table>
+<tr>
+<th align="center">94.4% visual tokens pruned</th>
+<th align="center">97.5% relative performance</th>
+<th align="center">2.31× video speedup</th>
+</tr>
+<tr>
+<td align="center">LLaVA-NeXT-13B · T = 160</td>
+<td align="center">NeXT-13B · ten-benchmark aggregate</td>
+<td align="center">LLaVA-Video-7B · T = 16/frame</td>
+</tr>
+</table>
 
-See [Qwen3.5-MiCo](Qwen3.5-MiCo/README.md) for the recovered QK-at-layer-12 adapter, single-image inference, and core tests. It shares the `vlmevalkit-qwen3vl` environment (Python 3.12 / PyTorch 2.7.0 / Transformers 5.2.0). Later task-query hybrid variants are available in the core API and are documented separately from the default QK recipe.
+<p align="center">
+<img src="assets/teaser-process.png" width="30%" alt="Original paper illustration of MiCo's two-stage token selection" />
+<img src="assets/teaser-results.png" width="34%" alt="Original cross-model relative-performance radar from the MiCo paper" />
+<img src="assets/teaser-efficiency.png" width="29%" alt="Original NeXT-13B POPE quality versus one-token speedup plot" />
+</p>
 
-## Environments
+<p align="center"><sub>Original paper teaser panels: visual evidence selection, cross-model performance, and the quality–speed trade-off.</sub></p>
 
-Use Linux x86_64 with an NVIDIA GPU and a CUDA-compatible driver. Keep these environments separate; the framework versions are incompatible with one another.
+> Results shown here are reported in the paper. Repository verification and paper benchmark reproduction are tracked separately in [Validation](#validation).
 
-| Directory | Environment name | Python | PyTorch / torchvision | Transformers | FlashAttention |
-| --- | --- | --- | --- | --- | --- |
-| `LLaVA-MiCo` | `fastv` | 3.10 | 2.1.2 / 0.16.2 | 4.37.2 | Not present in recorded environment |
-| `VLMEvalKit-MiCo` | `vlmevalkit-qwen2.5vl` | 3.11 | 2.7.0+cu126 / 0.22.0+cu126 | 4.48.1 | 2.8.3 |
-| `VLMEvalKit-MiCo-Qwen3` | `vlmevalkit-qwen3vl` | 3.12 | 2.7.0 / 0.22.0 | 5.2.0 | Not present in recorded environment |
-| `LLaVA-Video-MiCo` | `llavavid` | 3.10 | 2.1.2+cu121 / 0.16.2+cu121 | 4.41.2 | 2.6.3 |
+## Method
 
-The video profile is a candidate recovered from an existing environment and still needs runtime verification. Each directory provides its own `requirements.txt`; install only the one for the model you need. For example:
+<a href="assets/method.pdf"><img src="assets/method.png" width="100%" alt="MiCo's original framework figure from the LaTeX project" /></a>
+
+1. **Visual candidate selection.** Use feature magnitude, visual attention, and coverage to retain representative evidence before LLM processing.
+2. **Task-aware refinement.** Use text-to-visual attention at the selected decoder layer to refine that candidate pool under a token budget.
+
+Both stages greedily optimize an observable weighted coverage objective. The paper establishes monotonicity and submodularity for this surrogate. The stage-2 budget is chosen to match the target layer-average token count.
+
+## Results
+
+### Across model families
+
+<a href="assets/results-table.pdf"><img src="assets/results-table.png" width="100%" alt="Original MiCo cross-model results table, compiled from the paper LaTeX" /></a>
+
+The original table reports relative performance against each model's unpruned reference. It covers LLaVA, Qwen2.5-VL, Qwen3-VL, Qwen3.5, and InternVL3 at the paper's token budgets.
+
+### Quality and inference efficiency
+
+<a href="assets/efficiency.pdf"><img src="assets/efficiency.png" width="100%" alt="Original MiCo performance-efficiency plots and latency breakdown" /></a>
+
+**Image and video protocols differ:** NeXT plots use one-token latency; video plots use complete-answer latency. See the paper for the benchmark and generation protocol behind each point.
+
+<details>
+<summary><strong>View the original LLaVA-NeXT-13B results table</strong></summary>
+
+<a href="assets/next13b-table.pdf"><img src="assets/next13b-table.png" width="100%" alt="Original ten-benchmark MiCo results on LLaVA-NeXT-13B" /></a>
+
+</details>
+
+## Supported models
+
+| Model family | Implementation | Environment |
+| :--- | :--- | :--- |
+| LLaVA-1.5 / LLaVA-NeXT · 7B & 13B | [LLaVA-MiCo](LLaVA-MiCo) | `fastv` |
+| LLaVA-Video · 7B | [LLaVA-Video-MiCo](LLaVA-Video-MiCo) | `llavavid` |
+| Qwen2.5-VL · 7B / InternVL3 · 8B | [VLMEvalKit-MiCo](VLMEvalKit-MiCo) | `vlmevalkit-qwen2.5vl` |
+| Qwen3-VL · 8B | [VLMEvalKit-MiCo-Qwen3](VLMEvalKit-MiCo-Qwen3) | `vlmevalkit-qwen3vl` |
+| Qwen3.5 · 9B | [Qwen3.5-MiCo](Qwen3.5-MiCo) | `vlmevalkit-qwen3vl` |
+
+## Quick start
+
+Each component has its own pinned dependency profile. Start with the [environment guide](docs/RUNNING.md#environments), then use the public MiCo launcher:
 
 ```bash
-git clone git@github.com:MAX-7237/MiCo.git
-cd MiCo
-conda create -n vlmevalkit-qwen2.5vl python=3.11 -y
+git clone https://github.com/MAX-7237/MiCo.git
+cd MiCo/VLMEvalKit-MiCo
 conda activate vlmevalkit-qwen2.5vl
-cd VLMEvalKit-MiCo
-python -m pip install -r requirements.txt
-python -m pip install --no-build-isolation -r requirements-flash-attn.txt
-python -m pip check
+
+python run_mico.py --model qwen2.5-vl-7b --tokens 128 \
+  --dataset AI2D_TEST --work-dir outputs/mico --dry-run
 ```
 
-For other profiles, substitute the environment name, Python version, and directory from the table. Install FlashAttention only for profiles with a pinned version; build it after PyTorch using a compatible CUDA toolkit and compiler. Do not use `--no-deps` to bypass dependency conflicts. The launchers add the local source tree to `PYTHONPATH`, so editable installation is not required for those launchers. Upstream packaging metadata is retained for reference and may contain older dependency constraints.
+Remove `--dry-run` after preparing the environment, weights, and dataset. See the [full evaluation guide](docs/RUNNING.md#evaluation) for image, video, and model-specific commands; Qwen3.5 has a [dedicated single-image entry](Qwen3.5-MiCo/README.md).
 
-Candidate dependency adjustments from the recovered snapshots: video Triton 2.1.0 and HTTPcore 0.16.3/H11 0.14.0; Qwen2.5 OpenCV 4.11.0.86 for NumPy 1.26; image LLaVA PEFT 0.4.0 for its older Transformers API. These adjustments still require full runtime validation. Dataset-specific adapters may need additional dependencies.
+## Validation
 
-## Evaluation
+This is a **source-preview release**. Static checks and launcher dry runs pass; the recovered Qwen3.5 core also passes seven random-weight CPU model tests. Full clean-environment installation and real-weight GPU benchmark reproduction remain pending. See [validation records](VALIDATION.json) and [Qwen3.5 checks](Qwen3.5-MiCo/VALIDATION.json).
 
-Download the model weights and datasets separately, accepting their respective licenses. Set `HF_HOME` and `LMUData` if you want custom cache and VLMEval data locations. The repository contains no model weights or datasets. Any `/path/to/local-assets` values in legacy adapters are placeholders that must be configured before using those adapters.
+The README uses original figures and LaTeX tables from the paper project. PDF images are rasterized for GitHub display; click them for the vector originals. [Asset provenance](assets/SOURCES.json) records source files and hashes.
 
-Run commands from the indicated directory. Start with `--dry-run` to inspect the selected method and command; remove it to execute. Dry runs do not load model weights or validate GPU execution.
+## Citation
 
-### LLaVA image models
-
-```bash
-cd LLaVA-MiCo
-python run_mico.py --model llava-1.5-7b --tokens 128 \
-  --model-path liuhaotian/llava-v1.5-7b \
-  --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava15/answers.jsonl --dry-run
+```bibtex
+@article{wang2026mico,
+  title={MiCo: Mutual Information Coverage Optimization through Semantic Erasure Modeling for Efficient MLLM Inference},
+  author={Wang, Tinghao and Guo, Yichen and others},
+  journal={arXiv preprint arXiv:2609.34330},
+  year={2026}
+}
 ```
 
-Supported aliases: `llava-1.5-7b`, `llava-1.5-13b`, `llava-next-7b`, `llava-next-13b`. Typical LLaVA-1.5 budgets are 128/64/32; NeXT total budgets are 640/320/160. `--tokens` is passed unchanged. The launcher generates predictions through `llava.eval.model_vqa_loader`; use the appropriate dataset scorer afterwards. MMBench and ScienceQA also have dedicated modules under `llava/eval`.
+## Acknowledgements
 
-### Qwen2.5-VL and InternVL3
-
-```bash
-cd VLMEvalKit-MiCo
-python run_mico.py --model qwen2.5-vl-7b --tokens 128 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/qwen25 --dry-run
-python run_mico.py --model internvl3-8b --tokens 256 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/internvl3 --dry-run
-```
-
-### Qwen3-VL
-
-```bash
-cd VLMEvalKit-MiCo-Qwen3
-python run_mico.py --model qwen3-vl-8b --tokens 128 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/qwen3 --dry-run
-```
-
-VLMEval launchers use the model registry in `vlmeval/config.py`; change that registry if using local weights. Their `--model-path` argument is not supported. Consult the dataset adapter for preparation and scoring requirements, including optional external judge models. Clear any previous stage-1 ablation settings (`H_VIT_S1_MULT`, `H_VIT_NO_H`, `H_VIT_NO_COV`, `H_VIT_NO_ATTN`, `MICO_STAGE1_MULT`) when running the default configuration.
-
-### LLaVA-Video
-
-```bash
-cd LLaVA-Video-MiCo
-python run_mico.py --model llava-video-7b --tokens 32 --dataset videomme \
-  --model-path lmms-lab/LLaVA-Video-7B-Qwen2 \
-  --nproc 1 --work-dir outputs/video --dry-run
-```
-
-Video evaluation includes the vendored `lmms-eval` adapter, uses the Qwen conversation template and a maximum of 64 frames, and interprets the token budget per frame. Prepare datasets according to the selected task configuration under `lmms-eval/lmms_eval/tasks`.
-
-## Code layout and provenance
-
-- Image LLaVA: `llava/model/llava_arch.py` and `llava/model/language_model/modeling_llama_attn_cov_llm.py`.
-- Video: `llava/model/llava_arch.py`, `llava/model/language_model/llava_qwen.py`, and the `lmms_eval/models/llava_vid.py` adapter.
-- Qwen2.5/InternVL3: `vlmeval/vlm/attn_cov_select.py` and the respective `qwen2_5_vl` / `internvl3` model packages.
-- Qwen3: `vlmeval/vlm/qwen3_vl/modeling_qwen3_vl.py` and its pruning implementations.
-
-This repository builds on LLaVA, LLaVA-NeXT/LLaVA-Video, VLMEvalKit, lmms-eval, Transformers, and retained baseline implementations. Existing license files and source attribution remain with their components. Refer to those licenses when reusing or redistributing code; this preview does not assign a new blanket license to third-party sources.
-
-## Validation status
-
-Source syntax and all eight launcher dry runs are checked before the initial commit. Full dependency installation, model imports, GPU inference, and benchmark score reproduction remain pending. This release does not claim validated accuracy or speed results. Known legacy adapters may have unresolved optional imports; use the documented MiCo paths and report failures with the selected environment and model.
+Built on LLaVA, LLaVA-NeXT/LLaVA-Video, VLMEvalKit, lmms-eval, and Transformers. Component licenses and original third-party attribution are preserved in their respective directories.

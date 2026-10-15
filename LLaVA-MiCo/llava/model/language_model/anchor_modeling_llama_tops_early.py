@@ -54,7 +54,7 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 #     }
 # }
 
-# R_dict = { #这个是STAR_V2的配置
+# R_dict = { #这个是TOPS_VARIANT2的配置
 #     "7b": {
 #         2: {
 #             192: 240,
@@ -194,7 +194,7 @@ def cluster_and_merge(x, cluster_num):
     return x_merged.to(device=x.device, dtype=x.dtype)
 
 
-class PrefixLlamaModel(LlamaModel):
+class TOPSEarlyLlamaModel(LlamaModel):
     """
     Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`LlamaDecoderLayer`]
 
@@ -202,7 +202,7 @@ class PrefixLlamaModel(LlamaModel):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig, prefixvlm_config: Dict):
+    def __init__(self, config: LlamaConfig, tops_early_config: Dict):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
@@ -212,7 +212,7 @@ class PrefixLlamaModel(LlamaModel):
         elif config.num_hidden_layers == 40:
             self.scale = "13b"
 
-        self.retained_num = prefixvlm_config["T"]
+        self.retained_num = tops_early_config["T"]
         #使用retained_num*2作为visual_token_length，因为S1阶段要保留的token数量就是retained_num*2
         if config.image_aspect_ratio == "pad":
             self.visual_token_length = 576
@@ -221,7 +221,7 @@ class PrefixLlamaModel(LlamaModel):
             self.visual_token_length = 2880
             self.anyres = True
 
-        # PrefixVLM config
+        # TOPSEarly config
         if config.num_hidden_layers == 32:
             self.pruning_loc = [2, 6,15]
     

@@ -6,7 +6,7 @@ from transformers.models.llama.modeling_llama import LlamaModel, Cache, DynamicC
     _prepare_4d_causal_attention_mask, _prepare_4d_causal_attention_mask_for_sdpa
 from transformers.modeling_outputs import BaseModelOutputWithPast
 
-R_dict = { #这个是STAR_V2的配置
+R_dict = { #这个是TOPS_VARIANT2的配置
     "7b": {
         2: {
             192: 240,
@@ -60,17 +60,17 @@ class MultiheadLlamaModel(LlamaModel):
         config: LlamaConfig
     """
 
-    def __init__(self, config: LlamaConfig, prefixvlm_config: Dict):
+    def __init__(self, config: LlamaConfig, tops_early_config: Dict):
         super().__init__(config)
         self.system_prompt_length = 35
         self.visual_token_num = 0
-        
+
         if config.num_hidden_layers == 32:
             self.scale = "7b"
         elif config.num_hidden_layers == 40:
             self.scale = "13b"
 
-        self.retained_num = prefixvlm_config["T"]
+        self.retained_num = tops_early_config["T"]
         #使用retained_num*2作为visual_token_length，因为S1阶段要保留的token数量就是retained_num*2
         if config.image_aspect_ratio == "pad":
             self.visual_token_length = 576 // 2
@@ -79,7 +79,7 @@ class MultiheadLlamaModel(LlamaModel):
             self.visual_token_length = 2880 // 2
             self.anyres = True
 
-        # PrefixVLM config
+        # TOPSEarly config
         if config.num_hidden_layers == 32:
             if self.retained_num == 128:
                 self.pruning_loc = [2, 8, 16, 24]
@@ -89,7 +89,7 @@ class MultiheadLlamaModel(LlamaModel):
                 self.pruning_loc = [2, 8, 16, 24]
         elif config.num_hidden_layers == 40:
             self.pruning_loc = [2, 8, 20]
-    
+
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -198,12 +198,12 @@ class MultiheadLlamaModel(LlamaModel):
                     use_cache,
                 )
             else:
-                # PrefixVLM+
+                # TOPSEarly+
                 #不使用cross-attention，而是使用sim来挑选merge token
                 if seq_length > 1:
                     visual_token_num += visual_token_length
                     visual_token_list.append(visual_token_length)
-                    
+
                     if (decoder_layer.self_attn.layer_idx + 1) in self.pruning_loc:
                         attn_mask = torch.ones((batch_size, hidden_states.shape[1]), device=hidden_states.device)
                         attn_mask = _prepare_4d_causal_attention_mask(attn_mask, (batch_size, hidden_states.shape[1]), hidden_states, 0)
@@ -228,7 +228,7 @@ class MultiheadLlamaModel(LlamaModel):
                         cross_attn_weights = self_attn_weights[:, text_rater_index+self.system_prompt_length+visual_token_length,
                                                                self.system_prompt_length:self.system_prompt_length+visual_token_length]
                         cross_attn_weights = cross_attn_weights.mean(1)
-            
+
                         #-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
                         #2: score = λ * attn + (1-λ) * diversity
                         #只用retained_token
@@ -311,7 +311,7 @@ class MultiheadLlamaModel(LlamaModel):
                         position_ids = position_ids[:, :hidden_states.shape[1]]
                         layer_outputs = (hidden_states, layer_outputs[2])
                         visual_token_length = select_visual_tokens.shape[1]
-                        
+
                         # ---- debug: avg selected attn & avg pairwise sim ----
                         # 选中token对应的attn均值
                         avg_attn = a[selected_t].mean().item()
@@ -331,8 +331,8 @@ class MultiheadLlamaModel(LlamaModel):
                             f"avg_attn: {avg_attn:.4f}, "
                             f"avg_sim: {avg_sim:.4f}"
                         )
-                    
-                    
+
+
                     else:
                         layer_outputs = decoder_layer(
                             hidden_states,
@@ -348,7 +348,7 @@ class MultiheadLlamaModel(LlamaModel):
                         hidden_states,
                         attention_mask=attention_mask,
                         position_ids=torch.tensor([[
-                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]], 
+                            past_key_values.get_usable_length(1, decoder_layer.self_attn.layer_idx)]],
                             dtype=torch.int64).cuda(),
                         past_key_value=past_key_values,
                         output_attentions=output_attentions,

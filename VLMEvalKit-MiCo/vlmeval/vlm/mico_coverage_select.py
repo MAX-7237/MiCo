@@ -1,5 +1,5 @@
-# Shared S1 selector for attn_cov_vit_proj / attn_cov_vit_proj_llm_12.
-# Copied from LLaVA modeling_llama_attn_cov_llm.inner_weighted_raw_cls_select
+# Shared S1 selector for mico_coverage_vit_proj / mico_coverage_vit_proj_llm_12.
+# Copied from LLaVA modeling_llama_mico_coverage_llm.inner_weighted_raw_cls_select
 # so Qwen2.5-VL and InternVL3 use the same greedy, not a second implementation.
 
 import os
@@ -8,18 +8,18 @@ from typing import Dict, List, Tuple
 import torch
 import torch.nn.functional as F
 
-# Stage-1 budget multiplier for the attn_H_cov_vit_proj_llm_* arms.
+# Stage-1 budget multiplier for the mico_* arms.
 # 2 = the published configuration (S1 keeps 2T, S2 cuts at layer K so the
 # layer-average is T). The S1 ablation sweeps this to 3/4/5 while S2 keeps
 # hitting the same average-T identity: T*L = K*(m*T) + (L-K)*R.
 # Kept as an env knob on purpose: the method name's trailing integer is the
 # S2 layer K (parsed with rsplit('_', 1)), so encoding m in the name would
 # collide with that parse.
-S1_MULT_ENV = "H_VIT_S1_MULT"
+S1_MULT_ENV = "MICO_STAGE1_MULT"
 S1_MULT_ENV_DEFAULT = 2
 
 
-def attn_h_s1_mult() -> int:
+def mico_s1_mult() -> int:
     """Stage-1 keep multiplier m (S1 keeps m*T). Defaults to 2."""
     raw = os.environ.get(S1_MULT_ENV)
     if raw is None or str(raw).strip() == "":
@@ -33,7 +33,7 @@ def attn_h_s1_mult() -> int:
     return mult
 
 
-def attn_h_s2_keep(t_avg: int, n_layers: int, k_layer: int, s1_mult: int) -> int:
+def mico_s2_keep(t_avg: int, n_layers: int, k_layer: int, s1_mult: int) -> int:
     """Post-prune keep R for an S1 budget of m*T at layer K.
 
     Same identity as fastv_keep_after_k, generalised over the S1 multiplier:
@@ -53,7 +53,7 @@ def attn_h_s2_keep(t_avg: int, n_layers: int, k_layer: int, s1_mult: int) -> int
 def _comp_on(name: str) -> bool:
     """Component switch for the dual-stage ablation (default ON = unchanged).
 
-    H_VIT_NO_H / H_VIT_NO_COV / H_VIT_NO_ATTN each set to 1 turns OFF that
+    MICO_NO_NORM / MICO_NO_COVERAGE / MICO_NO_ATTENTION each set to 1 turns OFF that
     component in BOTH stages. Turning a component off means the selector
     degrades to pure top-k on whatever signal is left (see callers):
       no-attention -> relevance is constant, so selection is coverage-only
@@ -65,22 +65,22 @@ def _comp_on(name: str) -> bool:
 
 def s1_components() -> Tuple[bool, bool, bool]:
     """(use_attn, use_h, use_cov) for Stage 1."""
-    return (_comp_on("H_VIT_NO_ATTN"), _comp_on("H_VIT_NO_H"), _comp_on("H_VIT_NO_COV"))
+    return (_comp_on("MICO_NO_ATTENTION"), _comp_on("MICO_NO_NORM"), _comp_on("MICO_NO_COVERAGE"))
 
 
 def inner_weighted_raw_cls_select(
     features: torch.Tensor,
     raw_cls_attn: torch.Tensor,
     keep: int,
-    attn_h: bool = False,
+    mico: bool = False,
 ) -> torch.Tensor:
     """Greedy keep-`keep` by sum_v w_v * max(0, kappa(v,i) - m_v).
 
     w = raw CLS (clamp ≥0, no min-max). kappa is nonnegative cosine of
     `features`. Returns a boolean mask of length N.
 
-    With H_VIT_NO_COV=1 the coverage greedy is skipped and this degrades to a
-    plain top-k over w; with H_VIT_NO_ATTN=1 w is constant, so the ranking is
+    With MICO_NO_COVERAGE=1 the coverage greedy is skipped and this degrades to a
+    plain top-k over w; with MICO_NO_ATTENTION=1 w is constant, so the ranking is
     driven purely by coverage gain.
     """
     use_attn, use_h, use_cov = s1_components()
@@ -91,7 +91,7 @@ def inner_weighted_raw_cls_select(
     w = raw_cls_attn.float().clamp(min=0.0)
     if not use_attn:
         w = torch.ones_like(w)
-    if attn_h and use_h:
+    if mico and use_h:
         # H is measured before projection, on exactly the features used for
         # coverage; using projected features here would change the S1 ablation.
         h = features.detach().float().norm(dim=-1)

@@ -14,7 +14,7 @@ merge) is performed feature-level in InternVLChatModelPruning.extract_feature
 
 The (layer, keep) schedule is chosen so the average visual-token count across the
 28 decoder layers equals the requested target, keeping DUET directly comparable
-to fastv / star_v3 / tops at the same token budget.
+to fastv / tops_variant3 / tops at the same token budget.
 """
 
 from functools import partial

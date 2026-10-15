@@ -30,9 +30,9 @@ from llava.model.llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 from llava.model.language_model.modeling_qwen2_fastv import FastVQwen2Model
 from llava.model.language_model.modeling_qwen2_pdrop import PDropQwen2Model
 from llava.model.language_model.modeling_qwen2_sparsevlm import SparseQwen2Model
-from llava.model.language_model.modeling_qwen2_starv3 import STARV3Qwen2Model
+from llava.model.language_model.modeling_qwen2_tops_variant3 import TOPSVariant3Qwen2Model
 from llava.model.language_model.modeling_qwen2_tops import TOPSQwen2Model
-from llava.model.language_model.modeling_qwen2_attn_cov import AttnCovQwen2Model
+from llava.model.language_model.modeling_qwen2_mico_coverage import MiCoCoverageQwen2Model
 from llava.utils import rank0_print
 
 # from .qwen.modeling_qwen import QWenLMHeadModel, QWenModel
@@ -73,24 +73,24 @@ class SparseLlavaQwenModel(LlavaMetaModel, SparseQwen2Model):
         super(SparseLlavaQwenModel, self).__init__(config, sparsevlm_config=sparsevlm_config)
 
 
-class STARV3LlavaQwenModel(LlavaMetaModel, STARV3Qwen2Model):
-    # Alter LlavaQwenModel to STARV3LlavaQwenModel
+class TOPSVariant3LlavaQwenModel(LlavaMetaModel, TOPSVariant3Qwen2Model):
+    # Alter LlavaQwenModel to TOPSVariant3LlavaQwenModel
     config_class = LlavaQwenConfig
-    def __init__(self, config: Qwen2Config, starv3_config: dict):
-        super(STARV3LlavaQwenModel, self).__init__(config, starv3_config=starv3_config)
-        
+    def __init__(self, config: Qwen2Config, tops_variant3_config: dict):
+        super(TOPSVariant3LlavaQwenModel, self).__init__(config, tops_variant3_config=tops_variant3_config)
+
 class TOPSLlavaQwenModel(LlavaMetaModel, TOPSQwen2Model):
-    # Alter LlavaQwenModel to STARV3LlavaQwenModel
+    # Alter LlavaQwenModel to TOPSVariant3LlavaQwenModel
     config_class = LlavaQwenConfig
     def __init__(self, config: Qwen2Config, tops_config: dict):
         super(TOPSLlavaQwenModel, self).__init__(config, tops_config=tops_config)
 
 
-class AttnCovLlavaQwenModel(LlavaMetaModel, AttnCovQwen2Model):
+class MiCoCoverageLlavaQwenModel(LlavaMetaModel, MiCoCoverageQwen2Model):
     config_class = LlavaQwenConfig
 
-    def __init__(self, config, attn_cov_config):
-        super().__init__(config, attn_cov_config=attn_cov_config)
+    def __init__(self, config, mico_coverage_config):
+        super().__init__(config, mico_coverage_config=mico_coverage_config)
 
 
 class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
@@ -100,7 +100,7 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
                  use_fastv=False, fastv_config=None,
                  use_sparsevlm=False, sparsevlm_config=None,
                  use_pdrop=False, pdrop_config=None,
-                 use_starv3=False, starv3_config=None, 
+                 use_tops_variant3=False, tops_variant3_config=None,
                  use_tops=False, tops_config=None, **kwargs):
         # Debug: Show what parameters __init__ received
         rank0_print("="*80)
@@ -114,15 +114,15 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
         config.model_type = "llava_qwen"
         config.rope_scaling = None
 
-        if pruning_method in ('attn_cov_proj_llm_12', 'attn_H_cov_proj_llm_12'):
+        if pruning_method in ('mico_coverage_proj_llm_12', 'mico_projected_llm_12'):
             import os
-            if any((use_fastv, use_pdrop, use_sparsevlm, use_starv3, use_tops)):
-                raise ValueError('attn_cov cannot be combined with another LLM pruner')
+            if any((use_fastv, use_pdrop, use_sparsevlm, use_tops_variant3, use_tops)):
+                raise ValueError('mico_coverage cannot be combined with another LLM pruner')
             if visual_token_num is None:
-                raise ValueError('attn_cov requires an explicit visual_token_num target')
-            attn_cov_config = {'T': int(visual_token_num), 'K': int(os.environ.get('ATTN_COV_K', '12')),
-                               'attn_h': pruning_method == 'attn_H_cov_proj_llm_12'}
-            self.model = AttnCovLlavaQwenModel(config, attn_cov_config)
+                raise ValueError('mico_coverage requires an explicit visual_token_num target')
+            mico_coverage_config = {'T': int(visual_token_num), 'K': int(os.environ.get('MICO_COVERAGE_K', '12')),
+                               'mico': pruning_method == 'mico_projected_llm_12'}
+            self.model = MiCoCoverageLlavaQwenModel(config, mico_coverage_config)
         elif use_fastv:
             print(f"Use FastV: {fastv_config}")
             self.model = FastVLlavaQwenModel(config, fastv_config)
@@ -132,9 +132,9 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
         elif use_sparsevlm:
             print(f"Use SparseVLM: {sparsevlm_config}")
             self.model = SparseLlavaQwenModel(config, sparsevlm_config)
-        elif use_starv3:
-            print(f"Use STAR-V3 Stage2: {starv3_config}")
-            self.model = STARV3LlavaQwenModel(config, starv3_config)
+        elif use_tops_variant3:
+            print(f"Use TOPS-Variant3 Stage2: {tops_variant3_config}")
+            self.model = TOPSVariant3LlavaQwenModel(config, tops_variant3_config)
         elif use_tops:
             print(f"Use TOPS Stage2: {tops_config}")
             self.model = TOPSLlavaQwenModel(config, tops_config)
@@ -155,7 +155,7 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
 
         # Initialize weights and apply final processing
         self.post_init()
-    
+
     # Visual Token Pruning
     def get_pruning_method(self):
         return self.pruning_method

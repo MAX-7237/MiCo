@@ -39,7 +39,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import apply_rotary_pos_
 
 from .modeling_qwen2_5_vl_fastv import FastVQwen2_5_VLModel
 from .modeling_qwen2_5_vl_sparsevlm import SparseVLMQwen2_5_VLModel
-from .modeling_qwen2_5_vl_starv3 import StarV3Qwen2_5_VLModel
+from .modeling_qwen2_5_vl_tops_variant3 import TOPSVariant3Qwen2_5_VLModel
 from .modeling_qwen2_5_vl_tops import TOPSQwen2_5_VLModel
 from .modeling_qwen2_5_vl_dart import DARTQwen2_5_VLModel
 from .modeling_qwen2_5_vl_coverprune1 import CoverPrune1Qwen2_5_VLModel
@@ -54,8 +54,8 @@ if is_flash_attn_available():
 logger = logging.get_logger(__name__)
 
 
-def _is_attn_h_cov_vit_proj_llm(method: str) -> bool:
-    prefix = "attn_H_cov_vit_proj_llm_"
+def _is_mico(method: str) -> bool:
+    prefix = "mico_"
     if not isinstance(method, str) or not method.startswith(prefix):
         return False
     body = method[len(prefix):]
@@ -64,14 +64,14 @@ def _is_attn_h_cov_vit_proj_llm(method: str) -> bool:
     return body.isdigit()
 
 
-def _attn_h_s1_mult(method: str) -> int:
+def _mico_s1_mult(method: str) -> int:
     """S1 budget multiple of T, resolved method-name-first.
 
     `<...>_llm_<K>_s1m<M>` pins it per arm (so one run's arm cannot leak into
-    the next); otherwise fall back to the H_VIT_S1_MULT env knob. Default 2
-    preserves the published `attn_H_cov_vit_proj_llm_K` behaviour exactly.
+    the next); otherwise fall back to the MICO_STAGE1_MULT env knob. Default 2
+    preserves the published `mico_K` behaviour exactly.
     """
-    from vlmeval.vlm.attn_cov_select import attn_h_s1_mult as _env_mult
+    from vlmeval.vlm.mico_coverage_select import mico_s1_mult as _env_mult
     if isinstance(method, str):
         head, _, tail = method.rpartition("_s1m")
         if head and tail.isdigit() and int(tail) >= 1:
@@ -79,8 +79,8 @@ def _attn_h_s1_mult(method: str) -> int:
     return _env_mult()
 
 
-def _is_attn_h_cov_vit_proj(method: str) -> bool:
-    return method == "attn_H_cov_vit_proj" or _is_attn_h_cov_vit_proj_llm(method)
+def _is_mico_s1(method: str) -> bool:
+    return method == "mico_s1" or _is_mico(method)
 
 # Import memory debugging utilities
 try:
@@ -107,8 +107,8 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
             self.model = FastVQwen2_5_VLModel(config, visual_token_num)
         elif pruning_method == 'sparsevlm':
             self.model = SparseVLMQwen2_5_VLModel(config, visual_token_num)
-        elif pruning_method == 'star_v3':
-            self.model = StarV3Qwen2_5_VLModel(config, visual_token_num)
+        elif pruning_method == 'tops_variant3':
+            self.model = TOPSVariant3Qwen2_5_VLModel(config, visual_token_num)
         elif pruning_method == 'tops':
             self.model = TOPSQwen2_5_VLModel(config, visual_token_num)
         elif pruning_method == 'tops_2':
@@ -138,23 +138,23 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
             self.model = CoverPrune2Qwen2_5_VLModel(config, visual_token_num)
         elif pruning_method in ('cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2_projector_vit', 'scope_vit_origin',
                                 'scope_vit_origin_raw', 'cover_prune_2_proj_raw', 'cover_prune_2_projector_vit_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'cover_prune_2_projector_merge_first',
-                                'attn_cov_vit_proj', 'attn_cov_proj', 'attn_H_cov_vit_proj', 'holov'):
+                                'mico_coverage_vit_proj', 'mico_coverage_proj', 'mico_s1', 'holov'):
             # 单阶段(only after-projector, 剪到target): cp1_proj=SCOPE(外加权), cp2_proj=内加权
             #   cover_prune_2_projector_vit: cp2_proj 但 coverage 相似度在 ViT 空间算 (cls_attn 不变)
             #   scope_vit_origin: SCOPE 原版, 外加权 + coverage 在 ViT 空间
             #   *_raw: cls_attn 不归一化(真SCOPE原始attn) 的对照版
-            #   attn_cov_vit_proj: inner CLS×coverage on pre-merger ViT, keep T, no LLM prune
-            #   attn_cov_proj: same selector on merger/projector output, keep T, no LLM prune
+            #   mico_coverage_vit_proj: inner CLS×coverage on pre-merger ViT, keep T, no LLM prune
+            #   mico_coverage_proj: same selector on merger/projector output, keep T, no LLM prune
             self.model = Qwen2_5_VLModel(config)
-        elif pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10',
-                                'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6', 'attn_cov_proj_llm_12',
-                                'attn_cov_proj_llm_10', 'attn_cov_proj_llm_8',
-                                'attn_cov_proj_llm_7', 'attn_cov_proj_llm_6') or _is_attn_h_cov_vit_proj_llm(pruning_method):
+        elif pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10',
+                                'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6', 'mico_coverage_proj_llm_12',
+                                'mico_coverage_proj_llm_10', 'mico_coverage_proj_llm_8',
+                                'mico_coverage_proj_llm_7', 'mico_coverage_proj_llm_6') or _is_mico(pruning_method):
             # Within each feature space, every K arm shares S1=2T;
             # K only moves the post-layer S2 cut at fixed average-T budget.
             from .modeling_qwen2_5_vl_coverprune2 import TOPS_SCHEDULE
-            from vlmeval.vlm.attn_cov_select import (
-                attn_h_s2_keep,
+            from vlmeval.vlm.mico_coverage_select import (
+                mico_s2_keep,
                 fastv_keep_after_k,
                 llm12_pruning_layers,
             )
@@ -167,7 +167,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                 else getattr(config, 'num_hidden_layers', 28)
             )
             t = int(visual_token_num)
-            if _is_attn_h_cov_vit_proj_llm(pruning_method):
+            if _is_mico(pruning_method):
                 # Strip an optional `_s1m<M>` ablation suffix before reading K,
                 # so `..._llm_2_s1m4` still resolves to K=2.
                 _kstr = pruning_method.rsplit('_s1m', 1)[0]
@@ -176,11 +176,11 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     raise ValueError(f"H-ViT S2 K must be in [1, {n_layers - 1}], got {k}")
                 # S1 keeps m*T here, so use the generalised identity
                 # T*L = K*(m*T) + (L-K)*R (m=2 reproduces fastv_keep_after_k).
-                s1m = _attn_h_s1_mult(pruning_method)
-                s2 = {k: attn_h_s2_keep(t, n_layers, k, s1m)}
-            elif pruning_method in ('attn_cov_vit_proj_llm_10', 'attn_cov_vit_proj_llm_8',
-                                  'attn_cov_vit_proj_llm_6', 'attn_cov_proj_llm_10', 'attn_cov_proj_llm_8',
-                                  'attn_cov_proj_llm_7', 'attn_cov_proj_llm_6'):
+                s1m = _mico_s1_mult(pruning_method)
+                s2 = {k: mico_s2_keep(t, n_layers, k, s1m)}
+            elif pruning_method in ('mico_coverage_vit_proj_llm_10', 'mico_coverage_vit_proj_llm_8',
+                                  'mico_coverage_vit_proj_llm_6', 'mico_coverage_proj_llm_10', 'mico_coverage_proj_llm_8',
+                                  'mico_coverage_proj_llm_7', 'mico_coverage_proj_llm_6'):
                 k = int(pruning_method.rsplit('_', 1)[1])
                 s2 = {k: fastv_keep_after_k(t, n_layers, k, 2 * t)}
             else:
@@ -188,9 +188,9 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
             print(f"[{pruning_method}] S2={s2} (1-indexed post-layer cut, R=(T*L-K*m*T)/(L-K), L={n_layers})")
             self.model = CoverPrune2Qwen2_5_VLModel(
                 config, visual_token_num, pruning_layers=s2,
-                attn_h=_is_attn_h_cov_vit_proj_llm(pruning_method),
-                dynamic_r=_is_attn_h_cov_vit_proj_llm(pruning_method),
-                s1_mult=_attn_h_s1_mult(pruning_method),
+                mico=_is_mico(pruning_method),
+                dynamic_r=_is_mico(pruning_method),
+                s1_mult=_mico_s1_mult(pruning_method),
             )
         elif pruning_method == 'cover_prune_3':
             # COVER_Prune_3: 内(每项乘被覆盖attn)外(乘候选自身attn)都乘, 双阶段
@@ -200,7 +200,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
         self.pruning_method = pruning_method
         self.target_visual_token_num = visual_token_num  # Original target (never changes)
-        self.visual_token_num = visual_token_num  # Runtime metric (gets updated by STAR-V3/FastV)
+        self.visual_token_num = visual_token_num  # Runtime metric (gets updated by TOPS-Variant3/FastV)
 
     def forward(
         self,
@@ -273,7 +273,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
             if pixel_values is not None:
                 pixel_values = pixel_values.type(self.visual.dtype)
 
-                if self.pruning_method in ['fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+', 'vispruner', 'star_v3', 'tops', 'tops_2', 'tops_plus', 'holov', 'cover_prune_1', 'cover_prune_2', 'cover_prune_3', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'scope_vit_origin_raw', 'cover_prune_2_proj_raw', 'cover_prune_2_projector_vit_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'cover_prune_2_projector_merge_first', 'tsvol_w', 'tsvol_w_anti', 'attn_cov_vit_proj', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10', 'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6', 'attn_cov_proj', 'attn_cov_proj_llm_12', 'attn_cov_proj_llm_10', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_7', 'attn_cov_proj_llm_6'] or _is_attn_h_cov_vit_proj(self.pruning_method):
+                if self.pruning_method in ['fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+', 'vispruner', 'tops_variant3', 'tops', 'tops_2', 'tops_plus', 'holov', 'cover_prune_1', 'cover_prune_2', 'cover_prune_3', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'scope_vit_origin_raw', 'cover_prune_2_proj_raw', 'cover_prune_2_projector_vit_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'cover_prune_2_projector_merge_first', 'tsvol_w', 'tsvol_w_anti', 'mico_coverage_vit_proj', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10', 'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6', 'mico_coverage_proj', 'mico_coverage_proj_llm_12', 'mico_coverage_proj_llm_10', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_7', 'mico_coverage_proj_llm_6'] or _is_mico_s1(self.pruning_method):
                     def forward_with_attn(
                         self,
                         hidden_states: torch.Tensor,
@@ -462,7 +462,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         return attn_output
                     self.visual.blocks[-1].attn.forward = types.MethodType(forward_with_attn, self.visual.blocks[-1].attn)
 
-                if (self.pruning_method in ('mmtok', 'mmtok_origin', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'cover_prune_2_projector_vit_raw', 'scope_vit_origin_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'attn_cov_vit_proj', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10', 'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6', 'apet') or _is_attn_h_cov_vit_proj(self.pruning_method)) and not getattr(self, '_mmtok_hook_set', False):
+                if (self.pruning_method in ('mmtok', 'mmtok_origin', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'cover_prune_2_projector_vit_raw', 'scope_vit_origin_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'mico_coverage_vit_proj', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10', 'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6', 'apet') or _is_mico_s1(self.pruning_method)) and not getattr(self, '_mmtok_hook_set', False):
                     # MMTok Q / cp2proj_vit / scope_vit_origin coverage 用 ViT 合并前特征: forward_pre_hook 捕获 merger 输入 [seq,1280]
                     def _cap_merger_in(mod, inp):
                         self._mmtok_merger_in = inp[0]
@@ -550,9 +550,9 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         image_keys = attn_keys.view(seq_length // 4, 4, attn_keys.shape[1], attn_keys.shape[2]).mean(dim=1)
                         image_keys = image_keys[reverse_indices, :, :]
                 elif self.pruning_method in [
-                    'tops', 'tops_2', 'tops_plus', 'star_v3', 'holov', 'cover_prune_1', 'cover_prune_2', 'cover_prune_3', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'scope_vit_origin_raw', 'cover_prune_2_proj_raw', 'cover_prune_2_projector_vit_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'cover_prune_2_projector_merge_first',
-                    'tsvol_w', 'tsvol_w_anti', 'attn_cov_vit_proj', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10', 'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6', 'attn_cov_proj', 'attn_cov_proj_llm_12', 'attn_cov_proj_llm_10', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_7', 'attn_cov_proj_llm_6',
-                ] or _is_attn_h_cov_vit_proj(self.pruning_method):
+                    'tops', 'tops_2', 'tops_plus', 'tops_variant3', 'holov', 'cover_prune_1', 'cover_prune_2', 'cover_prune_3', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2_projector_vit', 'scope_vit_origin', 'scope_vit_origin_raw', 'cover_prune_2_proj_raw', 'cover_prune_2_projector_vit_raw', 'cover_prune_2_projector_vit_raw_merge_first', 'cover_prune_2_projector_merge_first',
+                    'tsvol_w', 'tsvol_w_anti', 'mico_coverage_vit_proj', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10', 'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6', 'mico_coverage_proj', 'mico_coverage_proj_llm_12', 'mico_coverage_proj_llm_10', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_7', 'mico_coverage_proj_llm_6',
+                ] or _is_mico_s1(self.pruning_method):
                     attn_last = self.visual.blocks[-1].attn
 
                     if hasattr(attn_last, 'num_images') and attn_last.num_images > 1:
@@ -567,7 +567,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                             # [num_heads, t_approx, t_approx] → mean over heads and cols → [t_approx]
                             all_patch_scores.append(attn_block.mean(dim=0).mean(dim=0))
                         all_patch_scores = torch.cat(all_patch_scores)  # [total_patches_approx]
-                        print(f"[DEBUG][TOPS][tops/star_v3] all_patch_scores: {all_patch_scores.shape}")
+                        print(f"[DEBUG][TOPS][tops/tops_variant3] all_patch_scores: {all_patch_scores.shape}")
 
                         token_scores = []
                         offset = 0
@@ -581,21 +581,21 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                             win_idx, _ = self.visual.get_window_index(thw.unsqueeze(0))
                             rev_idx = torch.argsort(win_idx)
                             img_token_scores = img_token_scores[rev_idx]
-                            print(f"[DEBUG][TOPS][tops/star_v3] image H={H} W={W} patches={t} tokens={img_token_scores.shape[0]}")
+                            print(f"[DEBUG][TOPS][tops/tops_variant3] image H={H} W={W} patches={t} tokens={img_token_scores.shape[0]}")
                             token_scores.append(img_token_scores)
                             offset += t
 
                         image_attns = torch.cat(token_scores)  # [N]
-                        print(f"[DEBUG][TOPS][tops/star_v3] image_attns (multi-image): {image_attns.shape}, N={image_embeds.shape[0]}")
+                        print(f"[DEBUG][TOPS][tops/tops_variant3] image_attns (multi-image): {image_attns.shape}, N={image_embeds.shape[0]}")
                     else:
                         seq_length = pixel_values.shape[0]
                         attn_weights = attn_last.attn_weights
-                        print(f"[DEBUG][TOPS][tops/star_v3] attn_weights (single-image): {attn_weights.shape}, seq_length={seq_length}")
+                        print(f"[DEBUG][TOPS][tops/tops_variant3] attn_weights (single-image): {attn_weights.shape}, seq_length={seq_length}")
                         window_index, _ = self.visual.get_window_index(image_grid_thw)
                         reverse_indices = torch.argsort(window_index)
                         image_attns = attn_weights.view(-1, seq_length // 4, 4, seq_length // 4, 4).mean(dim=(2, 4))
                         image_attns = image_attns[:, reverse_indices, :][:, :, reverse_indices]
-                        print(f"[DEBUG][TOPS][tops/star_v3] image_attns (single-image, after window restore): {image_attns.shape}")
+                        print(f"[DEBUG][TOPS][tops/tops_variant3] image_attns (single-image, after window restore): {image_attns.shape}")
                 elif self.pruning_method in ['trim_mean', 'trim_max', 'cdpruner_mean', 'cdpruner_max', 'tsvol', 'tsvol_w', 'tsvol_anti', 'tsvol_w_anti']:
                     image_token_indices = torch.where(input_ids == self.config.image_token_id)[1]
 
@@ -629,11 +629,11 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         image_attns[arithmetic_indices] = 0
                         selected_indices = image_attns.topk(self.target_visual_token_num//2, dim=-1).indices
                         selected_indices = torch.cat([selected_indices, arithmetic_indices])
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                     pruned_indices = selected_masks.float().topk(N-self.target_visual_token_num, dim=-1, largest=False).indices
-                    
+
                     selected_embeds = image_embeds[selected_indices]
                     selected_keys = image_keys[selected_indices]
                     selected_attns = image_attns[selected_indices]
@@ -651,7 +651,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                             selected_keys_norm[:i],
                             selected_keys_norm[i+1:],
                             pruned_keys_norm])
-                        
+
                         similarity = torch.matmul(center_key_norm, other_keys_norm.t())
                         cluster_indices = similarity.topk(32, dim=-1).indices
 
@@ -887,7 +887,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     if image_attns is None:
                         raise ValueError("HoloV requires attention weights, but they are not available")
                     # [heads, N, N] -> per-token relevance; mean over query rows and heads,
-                    # the same reduction the TOPS/star_v3 selector consumes.
+                    # the same reduction the TOPS/tops_variant3 selector consumes.
                     if image_attns.dim() == 3:
                         holov_relevance = image_attns.mean(dim=0).mean(dim=0)   # [N]
                     elif image_attns.dim() == 2:
@@ -944,7 +944,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
                         distinct_indices = scores.argsort(dim=-1, descending=True)[r:]
                         residual_indices = torch.cat([residual_indices[::2][distinct_indices], residual_indices[1::2]])
-                    
+
                     selected_indices = torch.cat([important_indices, residual_indices])
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
@@ -1185,7 +1185,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                         di2s -= torch.square(eis)
                         di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method in ('tsvol', 'tsvol_w', 'tsvol_anti', 'tsvol_w_anti'):
@@ -1304,7 +1304,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                         di2s -= torch.square(eis)
                         di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method == 'cdpruner_max':
@@ -1329,15 +1329,15 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         cis[i, :] = eis
                     di2s -= torch.square(eis)
                     di2s[j] = -float('inf')
-                    
+
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method == 'sparsevlm':
                     selected_masks = torch.ones(N, dtype=torch.bool, device=device)
-                elif self.pruning_method == 'star_v3':
-                    # STAR-V3: Adaptive Two-Stage Text-Concept Hierarchical Pruning
+                elif self.pruning_method == 'tops_variant3':
+                    # TOPS-Variant3: Adaptive Two-Stage Text-Concept Hierarchical Pruning
                     print(f"\n{'='*80}")
-                    print(f"STAR-V3 Stage 1: THCP (Text-Concept Hierarchical Pruning)")
+                    print(f"TOPS-Variant3 Stage 1: THCP (Text-Concept Hierarchical Pruning)")
                     print(f"{'='*80}")
 
                     # Extract text embeddings from inputs_embeds
@@ -1359,7 +1359,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
                     # Fallback to attention-based if no text
                     if M == 0:
-                        print("[STAR-V3 Warning] No text embeddings found, using attention fallback")
+                        print("[TOPS-Variant3 Warning] No text embeddings found, using attention fallback")
                         image_attns = image_attns.mean(dim=1).mean(dim=0)
                         selected_indices = image_attns.topk(self.target_visual_token_num, dim=-1).indices
                         selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
@@ -1420,7 +1420,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                         selected_masks[selected_tensor] = True
 
-                        print(f"[STAR-V3 Stage1] selected_masks.sum = {selected_masks.sum().item()}")
+                        print(f"[TOPS-Variant3 Stage1] selected_masks.sum = {selected_masks.sum().item()}")
 
                         print(f"  Selected {selected_masks.sum().item()} visual tokens")
                         print(f"{'='*80}\n")
@@ -1560,15 +1560,15 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[torch.tensor(selected, device=device, dtype=torch.long)] = True
                     print(f"[COVER_Prune_2 S1] Σ cls_attn(v)·cov cov_space={_covsrc}: N={N} → keep {int(selected_masks.sum().item())} (keep={stage1_keep_num})")
-                elif self.pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10',
-                                            'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6',
-                                            'attn_cov_vit_proj', 'attn_cov_proj_llm_12',
-                                            'attn_cov_proj_llm_10', 'attn_cov_proj_llm_8',
-                                            'attn_cov_proj_llm_7', 'attn_cov_proj_llm_6', 'attn_cov_proj') or _is_attn_h_cov_vit_proj(self.pruning_method):
+                elif self.pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10',
+                                            'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6',
+                                            'mico_coverage_vit_proj', 'mico_coverage_proj_llm_12',
+                                            'mico_coverage_proj_llm_10', 'mico_coverage_proj_llm_8',
+                                            'mico_coverage_proj_llm_7', 'mico_coverage_proj_llm_6', 'mico_coverage_proj') or _is_mico_s1(self.pruning_method):
                     # Same inner raw-CLS×coverage selector. vit_proj*: cosine on
-                    # pre-merger ViT; attn_cov_proj*: cosine on merger output.
+                    # pre-merger ViT; mico_coverage_proj*: cosine on merger output.
                     # Every llm_K arm keeps 2T; single-stage controls keep T.
-                    from vlmeval.vlm.attn_cov_select import inner_weighted_raw_cls_select
+                    from vlmeval.vlm.mico_coverage_select import inner_weighted_raw_cls_select
                     keep_2t = '_llm_' in self.pruning_method
                     use_vit = 'vit_proj' in self.pruning_method
                     # S1 budget multiple of T. Default 2 keeps every pre-existing
@@ -1597,13 +1597,13 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     else:
                         cov_feat = image_embeds.float()
                         _covsrc = 'proj'
-                    attn_h = _is_attn_h_cov_vit_proj(self.pruning_method)
+                    mico = _is_mico_s1(self.pruning_method)
                     selected_masks = inner_weighted_raw_cls_select(
-                        cov_feat, cls_attn, stage1_keep_num, attn_h=attn_h
+                        cov_feat, cls_attn, stage1_keep_num, mico=mico
                     )
                     s2 = f"S2={self.model.pruning_layers}, avg T" if keep_2t else "no LLM prune"
                     print(
-                        f"[{self.pruning_method}] S1 raw_visual_attn{'*|h|' if attn_h else ''}*coverage cov_space={_covsrc}: "
+                        f"[{self.pruning_method}] S1 raw_visual_attn{'*|h|' if mico else ''}*coverage cov_space={_covsrc}: "
                         f"N={N} → keep {int(selected_masks.sum().item())} "
                         f"({f'{_s1m}T' if keep_2t else 'T'}={stage1_keep_num}, {s2})"
                     )
@@ -1889,7 +1889,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
 
                     print(f"  Selected {selected_masks.sum().item()} tokens")
                     print(f"{'='*80}\n")
-                    
+
                 self.visual_token_len = selected_masks.sum().item()
 
                 n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
@@ -1912,21 +1912,21 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                             visual_start, visual_start + image_positions.numel(), device=image_positions.device)):
                         raise ValueError('apet requires a contiguous image-token span')
                     stage1_metadata['stage1_visual_span'] = (visual_start, int(selected_masks.sum().item()))
-                if self.pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_10',
-                                           'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_6',
-                                           'attn_cov_proj_llm_12', 'attn_cov_proj_llm_10',
-                                           'attn_cov_proj_llm_8', 'attn_cov_proj_llm_7',
-                                           'attn_cov_proj_llm_6') or _is_attn_h_cov_vit_proj_llm(self.pruning_method):
+                if self.pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_10',
+                                           'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_6',
+                                           'mico_coverage_proj_llm_12', 'mico_coverage_proj_llm_10',
+                                           'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_7',
+                                           'mico_coverage_proj_llm_6') or _is_mico(self.pruning_method):
                     # Short OCR inputs may keep every visual token; their text suffix is not always 10 tokens.
                     if mask.shape[0] != 1 or selected_masks.ndim != 1 or selected_masks.dtype != torch.bool:
-                        raise ValueError('attn_cov LLM pruning requires one image-token sequence and a 1D bool S1 mask')
+                        raise ValueError('mico_coverage LLM pruning requires one image-token sequence and a 1D bool S1 mask')
                     image_positions = mask[0].nonzero().squeeze(-1)
                     if image_positions.numel() == 0 or selected_masks.numel() != image_positions.numel():
                         raise ValueError('S1 mask must align with the actual image-token span')
                     visual_start = int(image_positions[0].item())
                     if not torch.equal(image_positions, torch.arange(
                             visual_start, visual_start + image_positions.numel(), device=image_positions.device)):
-                        raise ValueError('attn_cov LLM pruning requires a contiguous image-token span')
+                        raise ValueError('mico_coverage LLM pruning requires a contiguous image-token span')
                     stage1_metadata['stage1_visual_span'] = (visual_start, int(selected_masks.sum().item()))
                 mask_unsqueezed = mask.unsqueeze(-1)
                 mask_expanded = mask_unsqueezed.expand_as(inputs_embeds)
@@ -2005,14 +2005,14 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                         visual_token_indices + system_prompt_length,
                         torch.arange(system_prompt_length+visual_token_length, inputs_embeds.shape[1], device=device),
                     ))
-                    print(f"[STAR-V3 Stage1] retain_token_indices length = {retain_token_indices.shape[0]}")
+                    print(f"[TOPS-Variant3 Stage1] retain_token_indices length = {retain_token_indices.shape[0]}")
                     self.retain_token_indices = retain_token_indices
 
                     inputs_embeds = inputs_embeds[:, retain_token_indices]
                     position_ids = position_ids[:, :, retain_token_indices]
                     attention_mask = attention_mask[:, retain_token_indices]
                     cache_position = cache_position[:retain_token_indices.shape[0]]
-            
+
             # then use the prev pre-calculated rope-deltas to get the correct position ids
             else:
                 batch_size, seq_length, _ = inputs_embeds.shape

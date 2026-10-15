@@ -102,27 +102,27 @@ class InternVLChatModelPruning(PreTrainedModel):
                         visual_token_num=visual_token_num,
                         num_image_token=self.num_image_token
                     )
-                elif pruning_method == 'star_v3':
+                elif pruning_method == 'tops_variant3':
                     if visual_token_num <= 0:
-                        raise ValueError(f"visual_token_num must be positive for star_v3, got {visual_token_num}")
+                        raise ValueError(f"visual_token_num must be positive for tops_variant3, got {visual_token_num}")
 
                     print("\n" + "="*80)
-                    print("[InternVL3] 使用 STAR-V3 两阶段剪枝方法初始化 Language Model")
+                    print("[InternVL3] 使用 TOPS-Variant3 两阶段剪枝方法初始化 Language Model")
                     print("="*80)
-                    print(f"  Pruning method: star_v3")
+                    print(f"  Pruning method: tops_variant3")
                     print(f"  Stage 1 (THCP): Vision encoder → target×2 tokens")
                     print(f"  Stage 2 (Progressive): Decoder progressive pruning")
                     print(f"  Target FINAL visual tokens: {visual_token_num} (average across layers)")
 
-                    from .modeling_qwen2_star_v3 import StarV3Qwen2ForCausalLM, STAR_V3_SCHEDULE
-                    schedule = STAR_V3_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
+                    from .modeling_qwen2_tops_variant3 import TOPSVariant3Qwen2ForCausalLM, TOPS_VARIANT3_SCHEDULE
+                    schedule = TOPS_VARIANT3_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
                     print(f"  Stage 2 schedule: {schedule}")
                     print("="*80 + "\n")
 
                     # Initialize Stage 1 parameters
                     self.stage1_keep_tokens = max(1, visual_token_num * 2)
 
-                    self.language_model = StarV3Qwen2ForCausalLM(
+                    self.language_model = TOPSVariant3Qwen2ForCausalLM(
                         config.llm_config,
                         visual_token_num=visual_token_num,
                         num_image_token=self.num_image_token
@@ -299,8 +299,8 @@ class InternVLChatModelPruning(PreTrainedModel):
 
         input_embeds = input_embeds.reshape(B, N, C)
 
-        # STAR-V3: Set system prompt length for pruning
-        if self.pruning_method == 'star_v3' and N > 1:  # Prefill mode
+        # TOPS-Variant3: Set system prompt length for pruning
+        if self.pruning_method == 'tops_variant3' and N > 1:  # Prefill mode
             system_prompt_length = int(selected.max(dim=-1).indices) if selected.sum() > 0 else 41
             if hasattr(self.language_model, 'set_system_prompt_length'):
                 self.language_model.set_system_prompt_length(system_prompt_length)
@@ -637,11 +637,11 @@ class InternVLChatModelPruning(PreTrainedModel):
 
             selected_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             selected_masks.scatter_(1, select_idx, True)
-        elif self.pruning_method == 'star_v3':
-            # STAR-V3 Stage 1: THCP (Text-Concept Hierarchical Pruning)
+        elif self.pruning_method == 'tops_variant3':
+            # TOPS-Variant3 Stage 1: THCP (Text-Concept Hierarchical Pruning)
             total_tokens = B * N  # Total visual tokens across all patches
             print(f"\n{'='*80}")
-            print(f"[STAR-V3 Stage 1] THCP Text-Concept Coverage")
+            print(f"[TOPS-Variant3 Stage 1] THCP Text-Concept Coverage")
             print(f"  Visual tokens: {N} per patch ({B} patches) = {total_tokens} total")
             print(f"  Target (final): {self.visual_token_num}")
             print(f"  Stage 1 target: {self.stage1_keep_tokens} (adaptive: target × 2)")
@@ -877,8 +877,8 @@ class InternVLChatModelPruning(PreTrainedModel):
                     image_num_patches=num_patches_list,
                     text_embeds=input_embeds[:, -text_instruction_length:, :],
                 )
-            # For FastV or STAR-V3 pruning, use average visual tokens from language model
-            if self.pruning_method in ['fastv', 'star_v3'] and hasattr(self.language_model, 'model') and hasattr(self.language_model.model, 'visual_token_num'):
+            # For FastV or TOPS-Variant3 pruning, use average visual tokens from language model
+            if self.pruning_method in ['fastv', 'tops_variant3'] and hasattr(self.language_model, 'model') and hasattr(self.language_model.model, 'visual_token_num'):
                 lm_model = self.language_model.model
                 self.visual_token_len = lm_model.visual_token_num
             else:
@@ -916,8 +916,8 @@ class InternVLChatModelPruning(PreTrainedModel):
                 attention_mask = attention_mask[:, retain_token_indices]
                 position_ids = position_ids[:, retain_token_indices]
 
-                # Update system_prompt_length for STAR-V3 Stage 2
-                if self.pruning_method == 'star_v3':
+                # Update system_prompt_length for TOPS-Variant3 Stage 2
+                if self.pruning_method == 'tops_variant3':
                     self.system_prompt_length = system_prompt_length
             else:
                 position_ids = None
@@ -944,8 +944,8 @@ class InternVLChatModelPruning(PreTrainedModel):
             if hasattr(self.language_model, 'set_system_prompt_length'):
                 self.language_model.set_system_prompt_length(system_prompt_length)
 
-        # STAR-V3: Set system prompt length
-        if self.pruning_method == 'star_v3' and input_embeds.shape[1] > 1:
+        # TOPS-Variant3: Set system prompt length
+        if self.pruning_method == 'tops_variant3' and input_embeds.shape[1] > 1:
             if 'selected' in locals() and selected.sum() > 0:
                 first_img_token = int(selected.nonzero()[0].item())
                 system_prompt_length = first_img_token

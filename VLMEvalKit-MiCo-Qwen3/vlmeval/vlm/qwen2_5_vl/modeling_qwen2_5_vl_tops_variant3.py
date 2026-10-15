@@ -17,7 +17,7 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import Qwen2_5_VLModel
 logger = logging.get_logger(__name__)
 
 
-# STAR_V3 剪枝配置: Qwen2.5-VL-7B (28 layers)
+# TOPS_VARIANT3 剪枝配置: Qwen2.5-VL-7B (28 layers)
 #
 # 算法: initial = target × 2，三阶段剪枝
 #   Stage 1 (L0-11, 12层): 保持 initial tokens
@@ -26,20 +26,20 @@ logger = logging.get_logger(__name__)
 #
 # 约束: (initial×12 + a×4 + b×12) / 28 = target
 #      即: a + 3b = target
-STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "7b": {
         512: [(12, 281), (16, 77)],   # initial=1024, (1024×12+281×4+77×12)/28=512
         256: [(12, 139), (16, 39)],   # initial=512,  (512×12+139×4+39×12)/28=256
         128: [(12, 71), (16, 19)],    # initial=256,  (256×12+71×4+19×12)/28=128.0 (a+3b=71+57=128 ✓)
     },
 }
- 
-class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
+
+class TOPSVariant3Qwen2_5_VLModel(Qwen2_5_VLModel):
     """
-    STAR-V3 stage-2 implementation for Qwen2.5-VL.
+    TOPS-Variant3 stage-2 implementation for Qwen2.5-VL.
 
     Progressive three-step pruning with multi-token text guidance, following
-    STAR-V3 technical specification. Assumes Stage-1 THCP has already reduced
+    TOPS-Variant3 technical specification. Assumes Stage-1 THCP has already reduced
     visual tokens close to `2 × target_visual_tokens`.
     """
 
@@ -78,12 +78,12 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
         self.stage0_visual_tokens = self.visual_token_length
         self.stage1_expected_tokens = min(self.visual_token_length, self.stage1_keep_tokens)
 
-        schedule = STAR_V3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
+        schedule = TOPS_VARIANT3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
         if schedule is None:
             self.pruning_layers: Dict[int, int] = {}
             if visual_token_num > 0:
                 logger.warning_once(
-                    "STAR-V3 schedule missing for target %s on scale %s. Progressive pruning disabled.",
+                    "TOPS-Variant3 schedule missing for target %s on scale %s. Progressive pruning disabled.",
                     visual_token_num,
                     self.scale,
                 )
@@ -159,7 +159,7 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
 
             if before_tokens is not None and abs(before_tokens - current_tokens) > 1e-5:
                 logger.debug(
-                    "STAR-V3 average mismatch detected at layer %s: expected %.2f, recorded %.2f",
+                    "TOPS-Variant3 average mismatch detected at layer %s: expected %.2f, recorded %.2f",
                     layer_idx,
                     current_tokens,
                     before_tokens,
@@ -341,7 +341,7 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
 
         if seq_length > 1 and not self.prefill_done:
             print("\n" + "="*80)
-            print("[STAR-V3 Qwen2.5-VL DEBUG] Prefill Phase Start")
+            print("[TOPS-Variant3 Qwen2.5-VL DEBUG] Prefill Phase Start")
             print("="*80)
             print(f"  Sequence length: {seq_length}")
             print(f"  System prompt length: {self.system_prompt_length}")
@@ -368,10 +368,10 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
             self.prefill_done = True
             self.visual_token_sum = 0.0
             print(
-                f"[STAR-V3 DEBUG] Detected visual_len={detected_visual_len}, stage1_keep_tokens={self.stage1_keep_tokens}",
+                f"[TOPS-Variant3 DEBUG] Detected visual_len={detected_visual_len}, stage1_keep_tokens={self.stage1_keep_tokens}",
                 flush=True,
             )
-            print("\n[STAR-V3 Stage 1] Input analysis:", flush=True)
+            print("\n[TOPS-Variant3 Stage 1] Input analysis:", flush=True)
             print(f"  - Stage-0 (THCP input) tokens: {self.stage0_visual_tokens}", flush=True)
             print(f"  - Stage-1 expected tokens (target×2 cap): {self.stage1_expected_tokens}", flush=True)
             print(f"  - Stage-1 detected tokens: {detected_visual_len}", flush=True)
@@ -413,7 +413,7 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
 
             if should_prune:
                 target = self.pruning_layers[layer_idx]
-                print(f"\n[STAR-V3 PRUNING] Layer {layer_idx}")
+                print(f"\n[TOPS-Variant3 PRUNING] Layer {layer_idx}")
                 print(f"  Before: {self.current_visual_length} visual tokens → Target: {target}")
                 print(f"  Hidden states shape: {hidden_states.shape}")
                 print(f"  Position_ids shape: {position_ids.shape}")
@@ -441,9 +441,9 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
                     visual_token_indices = visual_importance.new_empty((0,), dtype=torch.long)
                 else:
                     visual_token_indices = torch.sort(visual_importance.topk(keep).indices).values
-                print(f"[STAR-V3 Stage 2] Keeping {visual_token_indices.numel()} tokens.", flush=True)
+                print(f"[TOPS-Variant3 Stage 2] Keeping {visual_token_indices.numel()} tokens.", flush=True)
                 print(
-                    f"[STAR-V3 Stage 2] visual_importance stats: mean={visual_importance.mean():.4f}, "
+                    f"[TOPS-Variant3 Stage 2] visual_importance stats: mean={visual_importance.mean():.4f}, "
                     f"max={visual_importance.max():.4f}, min={visual_importance.min():.4f}",
                     flush=True,
                 )
@@ -458,7 +458,7 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
                 ):
                     target = self.pruning_layers[layer_idx]
                     print(
-                        f"[STAR-V3 Stage 2] Layer {layer_idx}: skip pruning (current {self.current_visual_length} ≤ target {target})",
+                        f"[TOPS-Variant3 Stage 2] Layer {layer_idx}: skip pruning (current {self.current_visual_length} ≤ target {target})",
                         flush=True,
                     )
                     self.stage2_skip_events.append((layer_idx, self.current_visual_length, target))
@@ -553,7 +553,7 @@ class StarV3Qwen2_5_VLModel(Qwen2_5_VLModel):
                 total_layers,
             )
 
-            print("\n[STAR-V3 DEBUG] Stage summary:", flush=True)
+            print("\n[TOPS-Variant3 DEBUG] Stage summary:", flush=True)
             if self.stage1_actual_tokens is not None:
                 print(
                     f"  - Stage 1: {self.stage0_visual_tokens} → {self.stage1_actual_tokens} "

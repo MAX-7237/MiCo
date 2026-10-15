@@ -59,7 +59,7 @@ def mvbench_doc_to_visual(doc, lmms_eval_specific_kwargs=None):
     video_path = os.path.join(cache_dir, dataset_folder, doc["video"])
     if os.path.exists(video_path):
         video_path = video_path
-    elif os.path.basename(dataset_folder) in ["clevrer", "star"]:
+    elif os.path.basename(dataset_folder) in ["clevrer", "tops_prototype"]:
         alternative_video_path = os.path.join(cache_dir, "data0613", dataset_folder, doc["video"])
         if os.path.exists(alternative_video_path):
             video_path = alternative_video_path
@@ -76,7 +76,7 @@ def mvbench_frames_doc_to_visual(doc, lmms_eval_specific_kwargs=None):
     video_path = os.path.join(cache_dir, dataset_folder, doc["video"])
     if os.path.exists(video_path):
         video_path = video_path
-    elif os.path.basename(dataset_folder) in ["clevrer", "star"]:
+    elif os.path.basename(dataset_folder) in ["clevrer", "tops_prototype"]:
         alternative_video_path = os.path.join(cache_dir, "data0613", dataset_folder, doc["video"])
         if os.path.exists(alternative_video_path):
             video_path = alternative_video_path

@@ -244,20 +244,20 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                     if visual_token_num is None:
                         visual_token_num = kwargs.pop('visual_tokens_num', None)  # Also try plural form
 
-                    # Extract model variant flags for FastV/PDrop/SparseVLM/STARV3
+                    # Extract model variant flags for FastV/PDrop/SparseVLM/TOPSVariant3
                     use_fastv = kwargs.pop('use_fastv', False)
                     fastv_config = kwargs.pop('fastv_config', None)
                     use_pdrop = kwargs.pop('use_pdrop', False)
                     pdrop_config = kwargs.pop('pdrop_config', None)
                     use_sparsevlm = kwargs.pop('use_sparsevlm', False)
                     sparsevlm_config = kwargs.pop('sparsevlm_config', None)
-                    use_starv3 = kwargs.pop('use_starv3', False)
-                    starv3_config = kwargs.pop('starv3_config', None)
+                    use_tops_variant3 = kwargs.pop('use_tops_variant3', False)
+                    tops_variant3_config = kwargs.pop('tops_variant3_config', None)
                     use_tops = kwargs.pop('use_tops', False)
                     tops_config = kwargs.pop('tops_config', None)
 
                     rank0_print(f"[builder] 最终提取的参数: pruning_method={pruning_method}, visual_token_num={visual_token_num}")
-                    rank0_print(f"[builder] 模型变体参数: use_fastv={use_fastv}, use_pdrop={use_pdrop}, use_sparsevlm={use_sparsevlm}, use_starv3={use_starv3}, use_tops={use_tops}")
+                    rank0_print(f"[builder] 模型变体参数: use_fastv={use_fastv}, use_pdrop={use_pdrop}, use_sparsevlm={use_sparsevlm}, use_tops_variant3={use_tops_variant3}, use_tops={use_tops}")
                     rank0_print(f"[builder] kwargs剩余内容: {list(kwargs.keys())}")
                     rank0_print("="*80)
 
@@ -281,8 +281,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                             pdrop_config=pdrop_config,
                             use_sparsevlm=use_sparsevlm,
                             sparsevlm_config=sparsevlm_config,
-                            use_starv3=use_starv3,
-                            starv3_config=starv3_config,
+                            use_tops_variant3=use_tops_variant3,
+                            tops_variant3_config=tops_variant3_config,
                             use_tops=use_tops,
                             tops_config=tops_config,
                             **kwargs
@@ -302,8 +302,8 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                             pdrop_config=pdrop_config,
                             use_sparsevlm=use_sparsevlm,
                             sparsevlm_config=sparsevlm_config,
-                            use_starv3=use_starv3,
-                            starv3_config=starv3_config,
+                            use_tops_variant3=use_tops_variant3,
+                            tops_variant3_config=tops_variant3_config,
                             use_tops=use_tops,
                             tops_config=tops_config,
                             **kwargs

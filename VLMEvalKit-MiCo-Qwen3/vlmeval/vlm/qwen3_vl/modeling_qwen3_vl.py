@@ -1,7 +1,7 @@
 # coding=utf-8
 """
 Qwen3-VL pruning wrapper: Stage 1 (vision-side attention-guided token selection)
-and dispatch to Stage 2 pruning models (TOPS, StarV3, FastV).
+and dispatch to Stage 2 pruning models (TOPS, TOPSVariant3, FastV).
 
 Adapted from modeling_qwen2_5_vl.py for Qwen3-VL.
 
@@ -52,28 +52,28 @@ except ImportError:
           "Please upgrade to transformers>=5.7. Falling back to Qwen2.5-VL structure (may not work).")
 
 from .modeling_qwen3_vl_fastv import FastVQwen3VLModel
-from .modeling_qwen3_vl_starv3 import StarV3Qwen3VLModel
+from .modeling_qwen3_vl_tops_variant3 import TOPSVariant3Qwen3VLModel
 from .modeling_qwen3_vl_tops import TOPSQwen3VLModel
 from .modeling_qwen3_vl_duet import DuetQwen3VLModel
 from .modeling_qwen3_vl_dart import DARTQwen3VLModel
 from .modeling_qwen3_vl_sparsevlm import SparseVLMQwen3VLModel
 from .modeling_qwen3_vl_apet import ApETQwen3VLModel, apet_stage1, apet_budget
 from .modeling_qwen3_vl_coverprune2 import CoverPrune2Qwen3VLModel
-from .modeling_qwen3_vl_attn_cov_vit_proj import (
-    AttnCovVitProjLlm12Qwen3VLModel,
+from .modeling_qwen3_vl_mico_coverage_vit_proj import (
+    MiCoCoverageVitProjLlm12Qwen3VLModel,
     inner_weighted_raw_cls_select,
 )
 
 logger = logging.get_logger(__name__)
 
 
-def _is_attn_h_cov_vit_proj_llm(method: str) -> bool:
-    prefix = "attn_H_cov_vit_proj_llm_"
+def _is_mico(method: str) -> bool:
+    prefix = "mico_"
     return isinstance(method, str) and method.startswith(prefix) and method[len(prefix):].isdigit()
 
 
-def _is_attn_h_cov_vit_proj(method: str) -> bool:
-    return method == "attn_H_cov_vit_proj" or _is_attn_h_cov_vit_proj_llm(method)
+def _is_mico_s1(method: str) -> bool:
+    return method == "mico_s1" or _is_mico(method)
 
 
 def _qr_residual_select_exact(
@@ -331,10 +331,10 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
         super().__init__(config)
         if pruning_method == 'fastv':
             self.model = FastVQwen3VLModel(config, visual_token_num)
-        elif pruning_method == 'star_v3':
-            self.model = StarV3Qwen3VLModel(config, visual_token_num)
-        elif pruning_method in ('qr_star_avg', 'qr_block_star_avg'):
-            self.model = StarV3Qwen3VLModel(
+        elif pruning_method == 'tops_variant3':
+            self.model = TOPSVariant3Qwen3VLModel(config, visual_token_num)
+        elif pruning_method in ('mico_coverage_variant', 'qr_block_star_avg'):
+            self.model = TOPSVariant3Qwen3VLModel(
                 config,
                 visual_token_num,
                 schedule_variant='llava_aligned',
@@ -371,25 +371,25 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
             # cover_prune_2_proj are SINGLE-stage (base model + stock path), handled in Stage-1 only.
             self.model = CoverPrune2Qwen3VLModel(config, visual_token_num)
         elif pruning_method in (
-            'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-            'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10',
-            'attn_cov_proj_llm_12',
-            'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-            'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13',
-        ) or _is_attn_h_cov_vit_proj_llm(pruning_method):
+            'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+            'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10',
+            'mico_coverage_proj_llm_12',
+            'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+            'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13',
+        ) or _is_mico(pruning_method):
             # New names encode the actual 1-based post-layer cut; the legacy _12 alias stays at L15.
-            attn_h = _is_attn_h_cov_vit_proj_llm(pruning_method)
-            k_layer = None if (not attn_h and pruning_method.endswith('_llm_12')) else int(pruning_method.rsplit('_', 1)[1])
-            self.model = AttnCovVitProjLlm12Qwen3VLModel(
-                config, visual_token_num, k_layer=k_layer, method_name=pruning_method, attn_h=attn_h
+            mico = _is_mico(pruning_method)
+            k_layer = None if (not mico and pruning_method.endswith('_llm_12')) else int(pruning_method.rsplit('_', 1)[1])
+            self.model = MiCoCoverageVitProjLlm12Qwen3VLModel(
+                config, visual_token_num, k_layer=k_layer, method_name=pruning_method, mico=mico
             )
-        elif pruning_method in ('attn_cov_vit_proj', 'attn_cov_proj', 'attn_H_cov_vit_proj'):
+        elif pruning_method in ('mico_coverage_vit_proj', 'mico_coverage_proj', 'mico_s1'):
             # SINGLE-stage twins: S1 prunes straight to T, no in-LLM cut. Kept on the same class so the
             # S1 selector, DeepStack routing and sdpa decode path stay byte-identical to the two-stage
             # arms -- only pruning_layers={} differs. Name carries no K, so none is inferred.
-            self.model = AttnCovVitProjLlm12Qwen3VLModel(
+            self.model = MiCoCoverageVitProjLlm12Qwen3VLModel(
                 config, visual_token_num, method_name=pruning_method,
-                attn_h=_is_attn_h_cov_vit_proj(pruning_method), single_stage=True,
+                mico=_is_mico_s1(pruning_method), single_stage=True,
             )
         else:
             self.model = _BASE_MODEL_CLS(config)
@@ -449,20 +449,20 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                 # ── Stage 1: hook last vision block attention for importance scoring ──
                 if self.pruning_method in [
                     'fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+',
-                    'vispruner', 'star_v3', 'tops', 'tops_2', 'tops_plus',
+                    'vispruner', 'tops_variant3', 'tops', 'tops_2', 'tops_plus',
                     'holov', 'duet', 'duet_faithful',
                     'tsvol_w', 'tsvol_w_anti',
                     'cover_prune_1_proj', 'cover_prune_2', 'cover_prune_2_proj',
                     'scope_vit_origin', 'cover_prune_2_projector_vit', 'scope_raw', 'cover_prune_2_projector_vit_raw',
                     'cover_prune_2_projector_vit_raw_merge_first',
                     'cover_prune_2_projector_merge_first',
-                    'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-                    'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10',
-                    'attn_cov_vit_proj',
-                    'attn_cov_proj_llm_12', 'attn_cov_proj',
-                    'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-                    'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13',
-                ] or _is_attn_h_cov_vit_proj(self.pruning_method):
+                    'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+                    'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10',
+                    'mico_coverage_vit_proj',
+                    'mico_coverage_proj_llm_12', 'mico_coverage_proj',
+                    'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+                    'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13',
+                ] or _is_mico_s1(self.pruning_method):
                     def forward_with_attn(
                         self_attn,
                         hidden_states: torch.Tensor,
@@ -568,9 +568,9 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                 if (self.pruning_method in ('scope_vit_origin', 'cover_prune_2_projector_vit',
                                            'mmtok', 'mmtok_origin', 'scope_raw', 'cover_prune_2_projector_vit_raw',
                                            'cover_prune_2_projector_vit_raw_merge_first',
-                                           'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-                                           'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10',
-                                           'attn_cov_vit_proj') or _is_attn_h_cov_vit_proj(self.pruning_method)) \
+                                           'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+                                           'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10',
+                                           'mico_coverage_vit_proj') or _is_mico_s1(self.pruning_method)) \
                         and not getattr(self, '_mmtok_hook_set', False):
                     def _cap_merger_in(mod, inp):
                         self._mmtok_merger_in = inp[0]
@@ -596,18 +596,18 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                 # ── Extract attention info after vision encoder ──
                 attn_last = self.model.visual.blocks[-1].attn
 
-                if self.pruning_method in ['tops', 'tops_2', 'tops_plus', 'star_v3', 'holov', 'duet', 'duet_faithful',
+                if self.pruning_method in ['tops', 'tops_2', 'tops_plus', 'tops_variant3', 'holov', 'duet', 'duet_faithful',
                                            'tsvol_w', 'tsvol_w_anti',
                                            'cover_prune_1_proj', 'cover_prune_2', 'cover_prune_2_proj',
                                            'scope_vit_origin', 'cover_prune_2_projector_vit', 'scope_raw', 'cover_prune_2_projector_vit_raw',
                                            'cover_prune_2_projector_vit_raw_merge_first',
                                            'cover_prune_2_projector_merge_first',
-                                           'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-                                           'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10',
-                                           'attn_cov_vit_proj',
-                                           'attn_cov_proj_llm_12', 'attn_cov_proj',
-                                           'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-                                           'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13'] or _is_attn_h_cov_vit_proj(self.pruning_method):
+                                           'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+                                           'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10',
+                                           'mico_coverage_vit_proj',
+                                           'mico_coverage_proj_llm_12', 'mico_coverage_proj',
+                                           'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+                                           'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13'] or _is_mico_s1(self.pruning_method):
                     has_window_index = hasattr(self.model.visual, 'get_window_index')
                     if hasattr(attn_last, 'num_images') and attn_last.num_images > 1:
                         all_patch_scores = []
@@ -872,9 +872,9 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                         )
                         self._qr_block_stage1_logged = True
 
-                elif self.pruning_method in ('qr_duet', 'qr_star_avg'):
+                elif self.pruning_method in ('qr_duet', 'mico_coverage_variant'):
                     # Query-agnostic residual-QR Stage 1 shared by two controlled
-                    # Stage-2 experiments. qr_star_avg keeps STAR-Pro's own decoder
+                    # Stage-2 experiments. mico_coverage_variant keeps TOPSPrototype-Pro's own decoder
                     # and uses the LLaVA-aligned average-all-text variant.
                     # This is pure selection: no contextual token aggregation and no
                     # dense vision-attention matrix is materialized.
@@ -916,15 +916,15 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[torch.tensor(_qr_sel, device=device, dtype=torch.long)] = True
                     if _qr_os.environ.get('ENABLE_DEBUG', '0') == '1' and not self._qr_duet_stage1_logged:
-                        _qr_tag = 'QR-STAR-AVG' if self.pruning_method == 'qr_star_avg' else 'QR-DUET'
+                        _qr_tag = 'QR-TOPSPrototype-AVG' if self.pruning_method == 'mico_coverage_variant' else 'QR-DUET'
                         print(f'[{_qr_tag} Stage1] selected={len(_qr_sel)}/{N} '
                               f'keep={stage1_keep_num} target={self.target_visual_token_num} '
                               f'mult={_qr_mult:g}', flush=True)
                         self._qr_duet_stage1_logged = True
 
-                elif self.pruning_method == 'star_v3':
-                    # ---- STAR-Pro-QR Stage 1 (STAGE1_SCORER=qr): query-agnostic residual QR ----
-                    # Ported from InternVL3 STAR-Pro-QR. Iteratively pick the max residual-norm
+                elif self.pruning_method == 'tops_variant3':
+                    # ---- TOPSPrototype-Pro-QR Stage 1 (STAGE1_SCORER=qr): query-agnostic residual QR ----
+                    # Ported from InternVL3 TOPSPrototype-Pro-QR. Iteratively pick the max residual-norm
                     # visual token, then Gram-Schmidt project it out. No text participates; result
                     # is deterministic and prompt-independent. Stage-2 (in-decoder attention) is
                     # unchanged. Default path (env unset) is the original text-relevance greedy.
@@ -935,7 +935,7 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                         _qr_flat = image_embeds.detach().reshape(N, -1).to(torch.float32)
                         _qr_init = (_qr_flat ** 2).sum(dim=1)
                         if not torch.isfinite(_qr_init).all():
-                            raise ValueError('[STAR-QWEN3-QR] non-finite token norms')
+                            raise ValueError('[TOPSPrototype-QWEN3-QR] non-finite token norms')
                         _qr_res = _qr_flat.clone()
                         _qr_avail = torch.ones(N, dtype=torch.bool, device=device)
                         _qr_sel: List[int] = []
@@ -957,10 +957,10 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                         selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                         selected_masks[_qr_t] = True
                         if _qr_os.environ.get('ENABLE_DEBUG', '0') == '1':
-                            print(f'[STAR-QWEN3-QR S1] scorer=qr selected={len(_qr_sel)}/{N} '
+                            print(f'[TOPSPrototype-QWEN3-QR S1] scorer=qr selected={len(_qr_sel)}/{N} '
                                   f'keep={stage1_keep_num} target={self.target_visual_token_num}', flush=True)
                     else:
-                        # STAR-V3 Stage 1: THCP — relevance + diversity greedy selection
+                        # TOPS-Variant3 Stage 1: THCP — relevance + diversity greedy selection
                         image_token_indices_v = (input_ids == self.config.image_token_id).nonzero(as_tuple=True)[1]
                         if len(image_token_indices_v) > 0:
                             text_start_idx = image_token_indices_v[-1].item() + 1
@@ -1817,16 +1817,16 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                           f"{int(selected_masks.sum().item())} ({'target' if _proj else 'target*2'}={stage1_keep_num})")
 
                 elif self.pruning_method in (
-                    'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-                    'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10',
-                    'attn_cov_vit_proj',
-                    'attn_cov_proj_llm_12', 'attn_cov_proj',
-                    'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-                    'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13',
-                ) or _is_attn_h_cov_vit_proj(self.pruning_method):
+                    'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+                    'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10',
+                    'mico_coverage_vit_proj',
+                    'mico_coverage_proj_llm_12', 'mico_coverage_proj',
+                    'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+                    'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13',
+                ) or _is_mico_s1(self.pruning_method):
                     # Same inner raw-attn×coverage as LLaVA/InternVL. Weight is last-ViT
                     # attention (Qwen3 has no CLS; InternVL uses CLS query row). Cosine
-                    # space: vit_proj* = pre-merger ViT; attn_cov_proj* = merger/projector out.
+                    # space: vit_proj* = pre-merger ViT; mico_coverage_proj* = merger/projector out.
                     keep_2t = '_llm_' in self.pruning_method
                     use_vit = 'vit_proj' in self.pruning_method
                     stage1_multiplier = self.model.stage1_multiplier
@@ -1854,13 +1854,13 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                         raise ValueError(
                             f"{self.pruning_method} S1 feature rows {cov_feat.shape[0]} != N={N}"
                         )
-                    attn_h = _is_attn_h_cov_vit_proj(self.pruning_method)
+                    mico = _is_mico_s1(self.pruning_method)
                     selected_masks = inner_weighted_raw_cls_select(
-                        cov_feat, cls_attn, stage1_keep_num, attn_h=attn_h
+                        cov_feat, cls_attn, stage1_keep_num, mico=mico
                     )
                     print(
                         f"[{self.pruning_method}] sample S1={_covsrc} raw_visual_attn"
-                        f"{'*|h|' if attn_h else ''}*coverage "
+                        f"{'*|h|' if mico else ''}*coverage "
                         f"{str(stage1_multiplier) + 'T' if keep_2t else 'T'}: N={N} keep={int(selected_masks.sum().item())} "
                         f"({'S2=post-layer L' + str(self.model.K) if keep_2t else 'no LLM prune'})",
                         flush=True,
@@ -1931,7 +1931,7 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                 elif self.pruning_method not in [
                     'vanilla',
                     'fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+', 'vispruner',
-                    'star_v3', 'qr_star_avg', 'qr_block_star_avg',
+                    'tops_variant3', 'mico_coverage_variant', 'qr_block_star_avg',
                     'tops', 'fastv', 'random', 'duet_faithful', 'qr_duet',
                     'dart', 'dart_coverage', 'cover_llm',
                 ]:
@@ -2015,7 +2015,7 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
         # ── P7: Stage-1 compaction ──────────────────────────────────────────────────────────────
         # The OLD prune lived under `if position_ids is None:` (W:568). Under generate() position_ids
         # is never None, so that gate was ALWAYS False: stage-1 selection was computed and then
-        # silently discarded, and every star_v3 / tops / visionzip / prumerge / divprune / cdpruner
+        # silently discarded, and every tops_variant3 / tops / visionzip / prumerge / divprune / cdpruner
         # run in this tree was UNPRUNED while the logs reported a fictional token count. Dead-code
         # claim AST-verified: the If at W:568 tested `position_ids is None`, and its entire body
         # (the prune at 583-598 and the decode arm at 599-617) was unreachable when position_ids was
@@ -2072,20 +2072,20 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                     visual_pos_masks = torch.zeros(inputs_embeds.shape[:2], dtype=torch.bool, device=dev)
                     visual_pos_masks[0, new_visual_positions] = True
 
-            # P6: hand the custom decoders (fastv / star_v3 / tops) the explicit post-stage-1
+            # P6: hand the custom decoders (fastv / tops_variant3 / tops) the explicit post-stage-1
             # visual-position index vector. Their setters reject None, so push only when present; a
             # text-only prompt simply leaves the previous vector in place (fastv self-guards via a
-            # freshness flag; star_v3/tops never see a text-only prompt in this image benchmark suite).
+            # freshness flag; tops_variant3/tops never see a text-only prompt in this image benchmark suite).
             if (self.pruning_method in (
-                'fastv', 'star_v3', 'qr_star_avg', 'qr_block_star_avg',
+                'fastv', 'tops_variant3', 'mico_coverage_variant', 'qr_block_star_avg',
                 'tops', 'duet', 'duet_faithful', 'qr_duet',
                 'dart', 'dart_coverage', 'cover_llm', 'sparsevlm', 'apet',
-                'cover_prune_2', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-                'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10', 'attn_cov_proj_llm_12',
-                'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-                'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13',
-                'attn_cov_vit_proj', 'attn_cov_proj', 'attn_H_cov_vit_proj',
-            ) or _is_attn_h_cov_vit_proj(self.pruning_method)) and new_visual_positions is not None:
+                'cover_prune_2', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+                'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10', 'mico_coverage_proj_llm_12',
+                'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+                'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13',
+                'mico_coverage_vit_proj', 'mico_coverage_proj', 'mico_s1',
+            ) or _is_mico_s1(self.pruning_method)) and new_visual_positions is not None:
                 self.model.set_visual_token_positions(new_visual_positions)
         else:
             # Decode step. generate() grows attention_mask against the UNPRUNED prompt
@@ -2103,15 +2103,15 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
         #    must go through self.model.language_model(...) or DeepStack is silently OFF (UP:1242-1243
         #    forces visual_pos_masks/deepstack_visual_embeds to None inside Qwen3VLModel.forward). ────
         if self.pruning_method in (
-            'fastv', 'star_v3', 'qr_star_avg', 'qr_block_star_avg',
+            'fastv', 'tops_variant3', 'mico_coverage_variant', 'qr_block_star_avg',
             'tops', 'duet', 'duet_faithful', 'qr_duet',
             'dart', 'dart_coverage', 'cover_llm', 'sparsevlm', 'apet',
-            'cover_prune_2', 'attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj_llm_6',
-            'attn_cov_vit_proj_llm_8', 'attn_cov_vit_proj_llm_10', 'attn_cov_proj_llm_12',
-            'attn_cov_proj_llm_6', 'attn_cov_proj_llm_8', 'attn_cov_proj_llm_10',
-            'attn_cov_proj_llm_11', 'attn_cov_proj_llm_13',
-            'attn_cov_vit_proj', 'attn_cov_proj', 'attn_H_cov_vit_proj',
-        ) or _is_attn_h_cov_vit_proj(self.pruning_method):
+            'cover_prune_2', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj_llm_6',
+            'mico_coverage_vit_proj_llm_8', 'mico_coverage_vit_proj_llm_10', 'mico_coverage_proj_llm_12',
+            'mico_coverage_proj_llm_6', 'mico_coverage_proj_llm_8', 'mico_coverage_proj_llm_10',
+            'mico_coverage_proj_llm_11', 'mico_coverage_proj_llm_13',
+            'mico_coverage_vit_proj', 'mico_coverage_proj', 'mico_s1',
+        ) or _is_mico_s1(self.pruning_method):
             outputs = self.model(
                 input_ids=None,
                 position_ids=position_ids,

@@ -14,7 +14,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Adapted for STAR-PRO-LLaVA from official MustDrop implementation.
+Adapted for TOPS-Experimental-LLaVA from official MustDrop implementation.
 Source: https://github.com/MustDrop/MustDrop
 '''
 

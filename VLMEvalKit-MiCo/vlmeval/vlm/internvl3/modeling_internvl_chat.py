@@ -26,8 +26,8 @@ from ..sparsevlm_core import SPARSEVLM_PRUNING_LAYERS_28
 logger = logging.get_logger(__name__)
 
 
-def _is_attn_h_cov_vit_proj_llm(method: str) -> bool:
-    prefix = 'attn_H_cov_vit_proj_llm_'
+def _is_mico(method: str) -> bool:
+    prefix = 'mico_'
     if not isinstance(method, str) or not method.startswith(prefix):
         return False
     body = method[len(prefix):]
@@ -36,14 +36,14 @@ def _is_attn_h_cov_vit_proj_llm(method: str) -> bool:
     return body.isdigit()
 
 
-def _attn_h_s1_mult(method: str) -> int:
+def _mico_s1_mult(method: str) -> int:
     """S1 budget multiple of T, resolved method-name-first.
 
     `<...>_llm_<K>_s1m<M>` pins it per arm; otherwise fall back to the
-    H_VIT_S1_MULT env knob. Default 2 preserves the published
-    `attn_H_cov_vit_proj_llm_K` behaviour exactly.
+    MICO_STAGE1_MULT env knob. Default 2 preserves the published
+    `mico_K` behaviour exactly.
     """
-    from vlmeval.vlm.attn_cov_select import attn_h_s1_mult as _env_mult
+    from vlmeval.vlm.mico_coverage_select import mico_s1_mult as _env_mult
     if isinstance(method, str):
         head, _, tail = method.rpartition("_s1m")
         if head and tail.isdigit() and int(tail) >= 1:
@@ -51,8 +51,8 @@ def _attn_h_s1_mult(method: str) -> int:
     return _env_mult()
 
 
-def _is_attn_h_cov_vit_proj(method: str) -> bool:
-    return method == 'attn_H_cov_vit_proj' or _is_attn_h_cov_vit_proj_llm(method)
+def _is_mico_s1(method: str) -> bool:
+    return method == 'mico_s1' or _is_mico(method)
 
 # Variable names used to hold the cache at generation time
 ALL_CACHE_NAMES = [
@@ -153,52 +153,52 @@ class InternVLChatModelPruning(PreTrainedModel):
                         visual_token_num=visual_token_num,
                         num_image_token=self.num_image_token
                     )
-                elif pruning_method == 'star_v3':
+                elif pruning_method == 'tops_variant3':
                     if visual_token_num <= 0:
-                        raise ValueError(f"visual_token_num must be positive for star_v3, got {visual_token_num}")
+                        raise ValueError(f"visual_token_num must be positive for tops_variant3, got {visual_token_num}")
 
                     print("\n" + "="*80)
-                    print("[InternVL3] 使用 STAR-V3 两阶段剪枝方法初始化 Language Model")
+                    print("[InternVL3] 使用 TOPS-Variant3 两阶段剪枝方法初始化 Language Model")
                     print("="*80)
-                    print(f"  Pruning method: star_v3")
+                    print(f"  Pruning method: tops_variant3")
                     print(f"  Stage 1 (THCP): Vision encoder → target×2 tokens")
                     print(f"  Stage 2 (Progressive): Decoder progressive pruning")
                     print(f"  Target FINAL visual tokens: {visual_token_num} (average across layers)")
 
-                    from .modeling_qwen2_star_v3 import StarV3Qwen2ForCausalLM, STAR_V3_SCHEDULE
-                    schedule = STAR_V3_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
+                    from .modeling_qwen2_tops_variant3 import TOPSVariant3Qwen2ForCausalLM, TOPS_VARIANT3_SCHEDULE
+                    schedule = TOPS_VARIANT3_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
                     print(f"  Stage 2 schedule: {schedule}")
                     print("="*80 + "\n")
 
                     # Initialize Stage 1 parameters
                     self.stage1_keep_tokens = max(1, visual_token_num * 2)
 
-                    self.language_model = StarV3Qwen2ForCausalLM(
+                    self.language_model = TOPSVariant3Qwen2ForCausalLM(
                         config.llm_config,
                         visual_token_num=visual_token_num,
                         num_image_token=self.num_image_token
                     )
-                elif pruning_method == 'star_qr':
+                elif pruning_method == 'tops_qr_variant':
                     if visual_token_num <= 0:
-                        raise ValueError(f"visual_token_num must be positive for star_qr, got {visual_token_num}")
+                        raise ValueError(f"visual_token_num must be positive for tops_qr_variant, got {visual_token_num}")
 
                     print("\n" + "="*80)
-                    print("[InternVL3] 使用 STAR-Pro-QR 两阶段剪枝方法初始化 Language Model")
+                    print("[InternVL3] 使用 TOPSPrototype-Pro-QR 两阶段剪枝方法初始化 Language Model")
                     print("="*80)
-                    print(f"  Pruning method: star_qr")
+                    print(f"  Pruning method: tops_qr_variant")
                     print(f"  Stage 1 (QR): query-agnostic global residual QR → target×2 tokens")
                     print(f"  Stage 2 (Progressive): decoder pruning, text_aggregation=average_all")
                     print(f"  Target FINAL visual tokens: {visual_token_num} (average across layers)")
 
-                    from .modeling_qwen2_star_qr import StarQRQwen2ForCausalLM, STAR_QR_SCHEDULE
-                    schedule = STAR_QR_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
+                    from .modeling_qwen2_tops_qr_variant import TOPSQRVariantQwen2ForCausalLM, TOPS_QR_VARIANT_SCHEDULE
+                    schedule = TOPS_QR_VARIANT_SCHEDULE.get("internvl3_8b", {}).get(visual_token_num, [])
                     print(f"  Stage 2 schedule: {schedule}")
                     print("="*80 + "\n")
 
                     # Initialize Stage 1 parameters
                     self.stage1_keep_tokens = max(1, visual_token_num * 2)
 
-                    self.language_model = StarQRQwen2ForCausalLM(
+                    self.language_model = TOPSQRVariantQwen2ForCausalLM(
                         config.llm_config,
                         visual_token_num=visual_token_num,
                         num_image_token=self.num_image_token
@@ -334,25 +334,25 @@ class InternVLChatModelPruning(PreTrainedModel):
                         config.llm_config,
                         tops_config={"T": visual_token_num}
                     )
-                elif pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_proj_llm_12') or _is_attn_h_cov_vit_proj_llm(pruning_method):
-                    # attn_cov_vit_proj_llm_12: ViT-space S1 keep 2T
-                    # attn_cov_proj_llm_12: projector-space S1 keep 2T
+                elif pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_proj_llm_12') or _is_mico(pruning_method):
+                    # mico_coverage_vit_proj_llm_12: ViT-space S1 keep 2T
+                    # mico_coverage_proj_llm_12: projector-space S1 keep 2T
                     # Both: one LLM prune at TOPS first layer (12), FastV-style avg T.
                     if visual_token_num <= 0:
                         raise ValueError(
                             f"visual_token_num must be positive for {pruning_method}, got {visual_token_num}"
                         )
                     from .modeling_qwen2_tops import TopsQwen2ForCausalLM, TOPS_SCHEDULE
-                    from vlmeval.vlm.attn_cov_select import (
-                        attn_h_s1_mult,
-                        attn_h_s2_keep,
+                    from vlmeval.vlm.mico_coverage_select import (
+                        mico_s1_mult,
+                        mico_s2_keep,
                         fastv_keep_after_k,
                         llm12_pruning_layers,
                     )
                     n_layers = config.llm_config.num_hidden_layers
                     t = int(visual_token_num)
-                    attn_h = _is_attn_h_cov_vit_proj_llm(pruning_method)
-                    if attn_h:
+                    mico = _is_mico(pruning_method)
+                    if mico:
                         # Strip an optional `_s1m<M>` ablation suffix before reading K,
                         # so `..._llm_4_s1m5` still resolves to K=4.
                         k_layer = int(pruning_method.rsplit('_s1m', 1)[0].rsplit('_', 1)[1])
@@ -360,8 +360,8 @@ class InternVLChatModelPruning(PreTrainedModel):
                             raise ValueError(f"H-ViT S2 K must be in [1, {n_layers - 1}], got {k_layer}")
                         # S1 keeps M×T, so the per-layer average identity is
                         # T*L = K*(M*T) + (L-K)*R.
-                        s1_m = _attn_h_s1_mult(pruning_method)
-                        s2 = {k_layer: attn_h_s2_keep(t, n_layers, k_layer, s1_m)}
+                        s1_m = _mico_s1_mult(pruning_method)
+                        s2 = {k_layer: mico_s2_keep(t, n_layers, k_layer, s1_m)}
                     else:
                         s1_m = 2
                         s2 = llm12_pruning_layers(TOPS_SCHEDULE.get("internvl3_8b", {}), t, n_layers)
@@ -378,11 +378,11 @@ class InternVLChatModelPruning(PreTrainedModel):
                             "T": t,
                             "pruning_layers": s2,
                             "cover_s2_inside": True,
-                            "attn_h": attn_h,
-                            "dynamic_r": attn_h,
+                            "mico": mico,
+                            "dynamic_r": mico,
                         },
                     )
-                elif pruning_method in ['divprune', 'divprune_coverage', 'divprune_coverage_to_others_only', 'cover_qe', 'cover_prune', 'cover_e', 'cover_q', 'cover_u', 'cover_prune_1_proj', 'cover_prune_2_proj', 'mmtok', 'cdpruner', 'dppruner', 'visionzip', 'visionzip+', 'holov', 'attn_cov_vit_proj', 'attn_cov_proj', 'attn_H_cov_vit_proj']:
+                elif pruning_method in ['divprune', 'divprune_coverage', 'divprune_coverage_to_others_only', 'cover_qe', 'cover_prune', 'cover_e', 'cover_q', 'cover_u', 'cover_prune_1_proj', 'cover_prune_2_proj', 'mmtok', 'cdpruner', 'dppruner', 'visionzip', 'visionzip+', 'holov', 'mico_coverage_vit_proj', 'mico_coverage_proj', 'mico_s1']:
                     # These methods prune in extract_feature(), use vanilla LLM
                     if visual_token_num <= 0:
                         raise ValueError(f"visual_token_num must be positive for {pruning_method}, got {visual_token_num}")
@@ -558,14 +558,14 @@ class InternVLChatModelPruning(PreTrainedModel):
 
         input_embeds = input_embeds.reshape(B, N, C)
 
-        # STAR-V3 / STAR-Pro-QR: Set system prompt length for pruning
-        if self.pruning_method in ('star_v3', 'star_qr') and N > 1:  # Prefill mode
+        # TOPS-Variant3 / TOPSPrototype-Pro-QR: Set system prompt length for pruning
+        if self.pruning_method in ('tops_variant3', 'tops_qr_variant') and N > 1:  # Prefill mode
             system_prompt_length = int(selected.max(dim=-1).indices) if selected.sum() > 0 else 41
             if hasattr(self.language_model, 'set_system_prompt_length'):
                 self.language_model.set_system_prompt_length(system_prompt_length)
-                
+
         # TOPS: Set system prompt length for pruning
-        if self.pruning_method in ('tops', 'tops_2', 'tops_plus', 'cover_prune_2', 'attn_cov_vit_proj_llm_12', 'attn_cov_proj_llm_12') and N > 1:  # Prefill mode
+        if self.pruning_method in ('tops', 'tops_2', 'tops_plus', 'cover_prune_2', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_proj_llm_12') and N > 1:  # Prefill mode
             system_prompt_length = int(selected.max(dim=-1).indices) if selected.sum() > 0 else 41
             if hasattr(self.language_model, 'set_system_prompt_length'):
                 self.language_model.set_system_prompt_length(system_prompt_length)
@@ -670,7 +670,7 @@ class InternVLChatModelPruning(PreTrainedModel):
 
     def extract_feature(self, pixel_values, image_num_patches=None, text_embeds=None):
         vit_attns = None
-        if self.pruning_method in ['fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+', 'vispruner', 'tops', 'tops_2', 'tops_plus', 'holov', 'vscan', 'duet', 'duet_official', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2', 'attn_cov_vit_proj', 'attn_cov_vit_proj_llm_12', 'attn_cov_proj', 'attn_cov_proj_llm_12'] or _is_attn_h_cov_vit_proj(self.pruning_method):
+        if self.pruning_method in ['fastervlm', 'prumerge', 'prumerge+', 'visionzip', 'visionzip+', 'vispruner', 'tops', 'tops_2', 'tops_plus', 'holov', 'vscan', 'duet', 'duet_official', 'cover_prune_1_proj', 'cover_prune_2_proj', 'cover_prune_2', 'mico_coverage_vit_proj', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_proj', 'mico_coverage_proj_llm_12'] or _is_mico_s1(self.pruning_method):
             if self.select_layer == -1:
                 vit_outputs = self.vision_model(
                     pixel_values=pixel_values,
@@ -709,7 +709,7 @@ class InternVLChatModelPruning(PreTrainedModel):
         vit_embeds = self.pixel_shuffle(vit_embeds, scale_factor=self.downsample_ratio)
         vit_embeds = vit_embeds.reshape(vit_embeds.shape[0], -1, vit_embeds.shape[-1])
         # Pre-mlp1 tokens are still ViT space (after pixel_shuffle). S1 for
-        # attn_cov_vit_proj* uses this, matching LLaVA CLIP-before-projector.
+        # mico_coverage_vit_proj* uses this, matching LLaVA CLIP-before-projector.
         vit_pre_proj = vit_embeds
         if self.pruning_method == 'apet':
             from ..apet_select import apet_stage1
@@ -1056,13 +1056,13 @@ class InternVLChatModelPruning(PreTrainedModel):
                     j = int(torch.argmax(score)); select_idx[b, i] = j; avail[j] = False; g = torch.maximum(g, sim[j])
             selected_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             selected_masks.scatter_(1, select_idx, True)
-        elif self.pruning_method in ('attn_cov_vit_proj_llm_12', 'attn_cov_vit_proj', 'attn_cov_proj_llm_12', 'attn_cov_proj') or _is_attn_h_cov_vit_proj(self.pruning_method):
+        elif self.pruning_method in ('mico_coverage_vit_proj_llm_12', 'mico_coverage_vit_proj', 'mico_coverage_proj_llm_12', 'mico_coverage_proj') or _is_mico_s1(self.pruning_method):
             # Same inner raw-CLS×coverage as LLaVA. vit_proj*: cosine on
-            # pre-mlp1 ViT; attn_cov_proj*: cosine on mlp1 (projector) output.
-            from vlmeval.vlm.attn_cov_select import inner_weighted_raw_cls_select
+            # pre-mlp1 ViT; mico_coverage_proj*: cosine on mlp1 (projector) output.
+            from vlmeval.vlm.mico_coverage_select import inner_weighted_raw_cls_select
             keep_2t = '_llm_' in self.pruning_method
             use_vit = 'vit_proj' in self.pruning_method
-            # S1 budget = m*T (m reads H_VIT_S1_MULT / the `_s1m<M>` suffix).
+            # S1 budget = m*T (m reads MICO_STAGE1_MULT / the `_s1m<M>` suffix).
             _s1m = int(getattr(self, '_s1_mult', 2) or 2) if keep_2t else 1
             keep_total = min(self.visual_token_num * _s1m, B * N)
             # Split the budget per patch, handing the remainder to the first
@@ -1084,14 +1084,14 @@ class InternVLChatModelPruning(PreTrainedModel):
             for b in range(B):
                 masks.append(inner_weighted_raw_cls_select(
                     cov[b], cls_attn_all[b], per_patch_keep[b],
-                    attn_h=_is_attn_h_cov_vit_proj(self.pruning_method)
+                    mico=_is_mico_s1(self.pruning_method)
                 ))
             selected_masks = torch.stack(masks, dim=0)
             s2 = "S2=TOPS first LLM layer avg T" if keep_2t else "no LLM prune"
             _per = f"{min(per_patch_keep)}-{max(per_patch_keep)}" if per_patch_keep else "0"
             print(
                 f"[{self.pruning_method}] S1 {'ViT' if use_vit else 'proj'} raw_cls"
-                f"{'*|h|' if _is_attn_h_cov_vit_proj(self.pruning_method) else ''}*coverage: B={B} N={N} "
+                f"{'*|h|' if _is_mico_s1(self.pruning_method) else ''}*coverage: B={B} N={N} "
                 f"keep/patch={_per} kept={int(selected_masks.sum().item())} "
                 f"({f'{_s1m}T' if keep_2t else 'T'}={keep_total}, {s2})"
             )
@@ -1135,7 +1135,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                 # robust to multi-image MMMU samples where the tile count B differs
                 # from the number of images (the old per-image zip(text_embeds,
                 # image_num_patches) assumed 1 image per question and crashed with a
-                # batch-dim mismatch on multi-image). Mirrors LLaVA-STAR-Pro2 cdp3:
+                # batch-dim mismatch on multi-image). Mirrors LLaVA-TOPSPrototype-Pro2 cdp3:
                 # a shared 2D [M, D] text tensor matmul'd against every tile.
                 text_all = torch.cat([t.reshape(-1, t.shape[-1]) for t in text_embeds], dim=0)  # [M, D]
                 text_normalized = text_all / (text_all.norm(dim=-1, keepdim=True) + 1e-8)
@@ -1175,11 +1175,11 @@ class InternVLChatModelPruning(PreTrainedModel):
 
             selected_masks = torch.zeros(B, N, dtype=torch.bool, device=device)
             selected_masks.scatter_(1, select_idx, True)
-        elif self.pruning_method == 'star_v3':
-            # STAR-V3 Stage 1: THCP (Text-Concept Hierarchical Pruning)
+        elif self.pruning_method == 'tops_variant3':
+            # TOPS-Variant3 Stage 1: THCP (Text-Concept Hierarchical Pruning)
             total_tokens = B * N  # Total visual tokens across all patches
             print(f"\n{'='*80}")
-            print(f"[STAR-V3 Stage 1] THCP Text-Concept Coverage")
+            print(f"[TOPS-Variant3 Stage 1] THCP Text-Concept Coverage")
             print(f"  Visual tokens: {N} per patch ({B} patches) = {total_tokens} total")
             print(f"  Target (final): {self.visual_token_num}")
             print(f"  Stage 1 target: {self.stage1_keep_tokens} (adaptive: target × 2)")
@@ -1277,19 +1277,19 @@ class InternVLChatModelPruning(PreTrainedModel):
 
             print(f"{'='*80}\n")
 
-        elif self.pruning_method == 'star_qr':
-            # STAR-Pro-QR Stage 1 for InternVL3.
+        elif self.pruning_method == 'tops_qr_variant':
+            # TOPSPrototype-Pro-QR Stage 1 for InternVL3.
             #
             # InternVL emits B dynamic image patches with N visual tokens each.
             # Flatten them in their original patch-major order and run the same
-            # global, deterministic residual QR selector used by Qwen STAR-Pro-QR.
+            # global, deterministic residual QR selector used by Qwen TOPSPrototype-Pro-QR.
             # This remains query agnostic: no text embedding participates.
             #
             # Ported verbatim from the isolated build that produced the
-            # STAR-Pro-QR row of the InternVL3-8B main table
+            # TOPSPrototype-Pro-QR row of the InternVL3-8B main table
             # (/path/to/local-assets, 2026-07-24).
             # Only difference: there, STAGE1_SCORER=qr had to be set explicitly
-            # because that build hijacked the star_v3 name; here the method has
+            # because that build hijacked the tops_variant3 name; here the method has
             # its own name, so `qr` is the default and the env var only exists
             # to catch a caller asking for a scorer this branch cannot serve.
             import os
@@ -1297,11 +1297,11 @@ class InternVLChatModelPruning(PreTrainedModel):
             scorer = os.environ.get('STAGE1_SCORER', 'qr').strip().lower() or 'qr'
             if scorer not in ('qr', 'random'):
                 raise ValueError(
-                    f'star_qr implements qr | random, got STAGE1_SCORER={scorer!r}'
+                    f'tops_qr_variant implements qr | random, got STAGE1_SCORER={scorer!r}'
                 )
             total_tokens = B * N  # Total visual tokens across all patches
             print(f"\n{'='*80}")
-            print(f"[STAR-INTERNVL S1] Global deterministic residual QR")
+            print(f"[TOPSPrototype-INTERNVL S1] Global deterministic residual QR")
             print(f"  Visual tokens: {N} per patch ({B} patches) = {total_tokens} total")
             print(f"  Target (final): {self.visual_token_num}")
             print(f"  Stage 1 target: {self.stage1_keep_tokens} (adaptive: target × 2)")
@@ -1314,12 +1314,12 @@ class InternVLChatModelPruning(PreTrainedModel):
             scope = os.environ.get('STAGE1_QR_SCOPE', 'global').strip().lower()
             if scope != 'global':
                 raise ValueError(
-                    f'star_qr supports global scope only, got {scope!r}'
+                    f'tops_qr_variant supports global scope only, got {scope!r}'
                 )
             if os.environ.get('STAGE1_QR_REWEIGHT', 'none').strip().lower() != 'none':
-                raise ValueError('star_qr requires reweight=none')
+                raise ValueError('tops_qr_variant requires reweight=none')
             if os.environ.get('STAGE1_MERGE', '0') != '0':
-                raise ValueError('star_qr requires merge=0')
+                raise ValueError('tops_qr_variant requires merge=0')
 
             if scorer == 'random':
                 # Control arm: keep the same number of tokens, chosen uniformly
@@ -1339,7 +1339,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                     selected_tensor % N,
                 ] = True
                 print(
-                    f"[STAR-INTERNVL S1] scorer=random seed={seed} "
+                    f"[TOPSPrototype-INTERNVL S1] scorer=random seed={seed} "
                     f"selected={int(selected_tensor.numel())}/{total_tokens} "
                     f"mult={stage1_mult} target={self.visual_token_num}",
                     flush=True,
@@ -1350,7 +1350,7 @@ class InternVLChatModelPruning(PreTrainedModel):
             image_flat = vit_embeds.detach().reshape(-1, D).to(torch.float32)
             initial_norms = (image_flat ** 2).sum(dim=1)
             if not torch.isfinite(initial_norms).all():
-                raise ValueError('[STAR-INTERNVL S1] non-finite token norms')
+                raise ValueError('[TOPSPrototype-INTERNVL S1] non-finite token norms')
 
             residual = image_flat.clone()
             available = torch.ones(total_tokens, dtype=torch.bool, device=device)
@@ -1390,7 +1390,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                 or len(set(selected_indices)) != stage1_keep_num
             ):
                 raise ValueError(
-                    f'[STAR-INTERNVL S1] bad selection size '
+                    f'[TOPSPrototype-INTERNVL S1] bad selection size '
                     f'{len(selected_indices)} (want {stage1_keep_num})'
                 )
 
@@ -1405,7 +1405,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                 selected_tensor % N,
             ] = True
             print(
-                f"[STAR-INTERNVL S1] scorer=qr scope=global "
+                f"[TOPSPrototype-INTERNVL S1] scorer=qr scope=global "
                 f"selected={len(selected_indices)}/{total_tokens} "
                 f"mult={stage1_mult} target={self.visual_token_num}",
                 flush=True,
@@ -2021,8 +2021,8 @@ class InternVLChatModelPruning(PreTrainedModel):
                     image_num_patches=num_patches_list,
                     text_embeds=input_embeds[:, -text_instruction_length:, :],
                 )
-            # For FastV or STAR-V3 pruning, use average visual tokens from language model
-            if self.pruning_method in ['fastv', 'star_v3', 'tops', 'vscan', 'duet', 'duet_official'] and hasattr(self.language_model, 'model') and hasattr(self.language_model.model, 'visual_token_num'):
+            # For FastV or TOPS-Variant3 pruning, use average visual tokens from language model
+            if self.pruning_method in ['fastv', 'tops_variant3', 'tops', 'vscan', 'duet', 'duet_official'] and hasattr(self.language_model, 'model') and hasattr(self.language_model.model, 'visual_token_num'):
                 lm_model = self.language_model.model
                 self.visual_token_len = lm_model.visual_token_num
             else:
@@ -2069,8 +2069,8 @@ class InternVLChatModelPruning(PreTrainedModel):
                 attention_mask = attention_mask[:, retain_token_indices]
                 position_ids = position_ids[:, retain_token_indices]
 
-                # Update system_prompt_length for STAR-V3 / TOPS / VScan / DUET Stage 2
-                if self.pruning_method in ['star_v3', 'tops', 'vscan', 'duet', 'duet_official']:
+                # Update system_prompt_length for TOPS-Variant3 / TOPS / VScan / DUET Stage 2
+                if self.pruning_method in ['tops_variant3', 'tops', 'vscan', 'duet', 'duet_official']:
                     self.system_prompt_length = system_prompt_length
             else:
                 position_ids = None
@@ -2103,7 +2103,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                 self.language_model.set_system_prompt_length(system_prompt_length)
 
         # TOPS: Set system prompt length and visual token length for Stage 2
-        if (self.pruning_method in ('tops', 'tops_2', 'tops_plus', 'cover_prune_2', 'attn_cov_vit_proj_llm_12', 'attn_cov_proj_llm_12') or _is_attn_h_cov_vit_proj_llm(self.pruning_method)) and pixel_values is not None and input_embeds.shape[1] > 1:
+        if (self.pruning_method in ('tops', 'tops_2', 'tops_plus', 'cover_prune_2', 'mico_coverage_vit_proj_llm_12', 'mico_coverage_proj_llm_12') or _is_mico(self.pruning_method)) and pixel_values is not None and input_embeds.shape[1] > 1:
             if 'selected' in locals() and selected.sum() > 0:
                 first_img_token = int(selected.nonzero()[0].item())
                 system_prompt_length = first_img_token
@@ -2115,8 +2115,8 @@ class InternVLChatModelPruning(PreTrainedModel):
             if hasattr(self.language_model, 'model'):
                 self.language_model.model.visual_token_length = int(selected_masks.sum().item())
 
-        # STAR-V3 / STAR-Pro-QR: Set system prompt length
-        if self.pruning_method in ('star_v3', 'star_qr') and input_embeds.shape[1] > 1:
+        # TOPS-Variant3 / TOPSPrototype-Pro-QR: Set system prompt length
+        if self.pruning_method in ('tops_variant3', 'tops_qr_variant') and input_embeds.shape[1] > 1:
             if 'selected' in locals() and selected.sum() > 0:
                 first_img_token = int(selected.nonzero()[0].item())
                 system_prompt_length = first_img_token
@@ -2126,7 +2126,7 @@ class InternVLChatModelPruning(PreTrainedModel):
                 self.language_model.set_system_prompt_length(system_prompt_length)
 
         # VScan / DUET: Set system prompt length for Stage 2 (decoder self-detects
-        # the Stage-1 survivor count from the already-sliced sequence, like STAR-V3).
+        # the Stage-1 survivor count from the already-sliced sequence, like TOPS-Variant3).
         if self.pruning_method in ['vscan', 'duet', 'duet_official'] and pixel_values is not None and input_embeds.shape[1] > 1:
             if 'selected' in locals() and selected.sum() > 0:
                 first_img_token = int(selected.nonzero()[0].item())

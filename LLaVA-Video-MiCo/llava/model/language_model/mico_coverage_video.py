@@ -1,4 +1,4 @@
-"""Image attn_cov_proj_llm_12 objective adapted to Video's pooled SigLIP tokens.
+"""Image mico_coverage_proj_llm_12 objective adapted to Video's pooled SigLIP tokens.
 
 S1 raw visual weights are mean-query SigLIP attention (SigLIP has no CLS).
 Both stages preserve image code's inner-weighted nonnegative cosine objective.
@@ -77,7 +77,7 @@ def weighted_coverage_select(features, weights, keep):
 def pack_video(features, masks, layout='flat'):
     """Keep shared Video pruning protocol: frame-major flat with no newlines."""
     if layout != 'flat':
-        raise ValueError('attn_cov Video supports flat packing only')
+        raise ValueError('mico_coverage Video supports flat packing only')
     if features.ndim != 3 or masks.shape != features.shape[:2] or masks.dtype != torch.bool:
         raise ValueError('expected frame features [F,N,D] and boolean masks [F,N]')
     if not masks.any(1).all():
@@ -98,10 +98,10 @@ def post_text_attention(decoder_layer, hidden_states, position_ids, visual_posit
     GQA head repetition and the attention module's probability cast.
     """
     if hidden_states.shape[0] != 1:
-        raise ValueError('attn_cov Video currently requires batch_size=1')
+        raise ValueError('mico_coverage Video currently requires batch_size=1')
     attn = decoder_layer.self_attn
     if decoder_layer.training:
-        raise ValueError('attn_cov inference requires eval mode')
+        raise ValueError('mico_coverage inference requires eval mode')
     x = decoder_layer.input_layernorm(hidden_states)
     b, seq, _ = x.shape
     q = attn.q_proj(x).view(b, seq, attn.num_heads, attn.head_dim).transpose(1, 2)

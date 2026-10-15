@@ -14,16 +14,16 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
 
 from .modeling_llama_fastv import FastVLlamaModel
-from .modeling_llama_attn_cov_llm import AttnCovLLMLlamaModel
+from .modeling_llama_mico_coverage_llm import MiCoCoverageLLMLlamaModel
 from .modeling_llama_sparsevlm import SparseLlamaModel
 from .modeling_llama_divdriven import D2PLlamaModel
 from .modeling_llama_svd import SVDLlamaModel
-from .modeling_llama_prefix import PrefixLlamaModel
+from .modeling_llama_tops_early import TOPSEarlyLlamaModel
 from .modeling_llama_holov2 import HoloV_2_LlamaModel
 from .modeling_llama_idea import IdeaLlamaModel
-from .modeling_llama_prefix_2 import Prefix_2_LlamaModel
+from .modeling_llama_tops import TOPS_LlamaModel
 from .modeling_llama_pdrop import PDropLlamaModel
-from .modelling_llama_star import STARVLMModel  # ⭐ 从 modelling_llama_star 导入
+from .modelling_llama_tops_prototype import TOPSPrototypeModel  # ⭐ 从 modelling_llama_tops_prototype 导入
 from .modelling_llama_mustdrop import MustDropLlamaModel  # MustDrop baseline
 from .modeling_llama_vscan import VScanLlamaModel  # 🔬 VScan baseline
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
@@ -47,24 +47,24 @@ class FastVLlavaLlamaModel(LlavaMetaModel, FastVLlamaModel):
         super(FastVLlavaLlamaModel, self).__init__(config, fastv_config=fastv_config)
 
 
-class AttnCovLLMLlavaLlamaModel(LlavaMetaModel, AttnCovLLMLlamaModel):
+class MiCoCoverageLLMLlavaLlamaModel(LlavaMetaModel, MiCoCoverageLLMLlamaModel):
     config_class = LlavaLlamaConfig
 
-    def __init__(self, config: LlamaConfig, attn_cov_llm_config: dict):
-        super(AttnCovLLMLlavaLlamaModel, self).__init__(config, attn_cov_llm_config=attn_cov_llm_config)
+    def __init__(self, config: LlamaConfig, mico_coverage_llm_config: dict):
+        super(MiCoCoverageLLMLlavaLlamaModel, self).__init__(config, mico_coverage_llm_config=mico_coverage_llm_config)
 
 
 class SparseLlavaLlamaModel(LlavaMetaModel, SparseLlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, sparsevlm_config: dict):
         super(SparseLlavaLlamaModel, self).__init__(config, sparsevlm_config=sparsevlm_config)
-        
+
 #----------------------------------------------------------------------------------------------
 #D2P: Diversity Driven Pruning Algorithm
 class D2PLlavaLlamaModel(LlavaMetaModel, D2PLlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, d2p_config: dict):
         super(D2PLlavaLlamaModel, self).__init__(config, d2p_config=d2p_config)
 #----------------------------------------------------------------------------------------------
@@ -73,25 +73,25 @@ class D2PLlavaLlamaModel(LlavaMetaModel, D2PLlamaModel):
 #SVDVLM: SVD-based Visual Language Model
 class SVDLlavaLlamaModel(LlavaMetaModel, SVDLlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, svdvlm_config: dict):
         super(SVDLlavaLlamaModel, self).__init__(config, svdvlm_config=svdvlm_config)
 #----------------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------
-# PrefixVLM: Prefix-based Visual Language Model
-class PrefixLlavaLlamaModel(LlavaMetaModel, PrefixLlamaModel):
+# TOPSEarly: Prefix-based Visual Language Model
+class TOPSEarlyLlavaLlamaModel(LlavaMetaModel, TOPSEarlyLlamaModel):
     config_class = LlavaLlamaConfig
-    
-    def __init__(self, config: LlamaConfig, prefixvlm_config: dict):
-        super(PrefixLlavaLlamaModel, self).__init__(config, prefixvlm_config=prefixvlm_config)
+
+    def __init__(self, config: LlamaConfig, tops_early_config: dict):
+        super(TOPSEarlyLlavaLlamaModel, self).__init__(config, tops_early_config=tops_early_config)
 # -------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------
 # HoloV_2: HoloV_2 baseline
 class HoloV_2_LlavaLlamaModel(LlavaMetaModel, HoloV_2_LlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, holov2_config: dict):
         super(HoloV_2_LlavaLlamaModel, self).__init__(config, holov2_config=holov2_config)
 # -------------------------------------------------------------------------
@@ -100,36 +100,36 @@ class HoloV_2_LlavaLlamaModel(LlavaMetaModel, HoloV_2_LlamaModel):
 # Idea: Idea baseline
 class Idea_LlavaLlamaModel(LlavaMetaModel, IdeaLlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, idea_config: dict):
         super(Idea_LlavaLlamaModel, self).__init__(config, idea_config=idea_config)
 # -------------------------------------------------------------------------
 
 
 # -------------------------------------------------------------------------
-# Prefix_2: Prefix-2 baseline
-class Prefix_2_LlavaLlamaModel(LlavaMetaModel, Prefix_2_LlamaModel):
+# TOPS: TOPS baseline
+class TOPS_LlavaLlamaModel(LlavaMetaModel, TOPS_LlamaModel):
     config_class = LlavaLlamaConfig
-    
-    def __init__(self, config: LlamaConfig, prefixvlm_2_config: dict):
-        super(Prefix_2_LlavaLlamaModel, self).__init__(config, prefixvlm_2_config=prefixvlm_2_config)
+
+    def __init__(self, config: LlamaConfig, tops_config: dict):
+        super(TOPS_LlavaLlamaModel, self).__init__(config, tops_config=tops_config)
 # -------------------------------------------------------------------------
 class PDropLlavaLlamaModel(LlavaMetaModel, PDropLlamaModel):
     config_class = LlavaLlamaConfig
-    
+
     def __init__(self, config: LlamaConfig, pdrop_config: dict):
         super(PDropLlavaLlamaModel, self).__init__(config, pdrop_config=pdrop_config)
 
 
-# ⭐ STAR: Semantic-aware Token Allocation with Regional Visual Latent Model
-class STARLlavaLlamaModel(LlavaMetaModel, STARVLMModel):
+# ⭐ TOPSPrototype: Semantic-aware Token Allocation with Regional Visual Latent Model
+class TOPSPrototypeLlavaLlamaModel(LlavaMetaModel, TOPSPrototypeModel):
     """
-    STAR integrated with LLaVA
+    TOPSPrototype integrated with LLaVA
     """
     config_class = LlavaLlamaConfig
 
-    def __init__(self, config: LlamaConfig, star_config: dict):
-        super(STARLlavaLlamaModel, self).__init__(config, starvlm_config=star_config)
+    def __init__(self, config: LlamaConfig, tops_prototype_config: dict):
+        super(TOPSPrototypeLlavaLlamaModel, self).__init__(config, tops_prototype_config=tops_prototype_config)
 
 
 # MustDrop: Dual Attention Filter baseline for comparison
@@ -172,16 +172,16 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
     def __init__(self, config, pruning_method=None, visual_token_num=None,
                  use_fastv=False, fastv_config=None,
-                 use_attn_cov_llm=False, attn_cov_llm_config=None,
+                 use_mico_coverage_llm=False, mico_coverage_llm_config=None,
                  use_sparsevlm=False, sparsevlm_config=None,
                  use_svdvlm=False, svdvlm_config=None,
-                 use_prefixvlm=False, prefixvlm_config=None,
+                 use_tops_early=False, tops_early_config=None,
                  use_d2p=False, d2p_config=None,
                  use_holov2=False, holov2_config=None,
                  use_idea=False, idea_config=None,
-                 use_prefixvlm_2=False, prefixvlm_2_config=None,
+                 use_tops=False, tops_config=None,
                  use_pdrop=False, pdrop_config=None,
-                 use_star=False, star_config=None,  # ⭐ 参数名: use_star, star_config
+                 use_tops_prototype=False, tops_prototype_config=None,  # ⭐ 参数名: use_tops_prototype, tops_prototype_config
                  use_mustdrop=False, mustdrop_config=None,  # MustDrop baseline
                  **kwargs):
         # 🔥 MustDrop: Set config flag BEFORE model creation
@@ -193,15 +193,15 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         super(LlamaForCausalLM, self).__init__(config)
 
-        # ⭐ Model selection with STAR and MustDrop support
+        # ⭐ Model selection with TOPSPrototype and MustDrop support
         if use_mustdrop:
             print(f"Use MustDrop: {mustdrop_config}")
             self.model = MustDropLlavaLlamaModel(config, mustdrop_config=mustdrop_config)
-        elif use_star:
-            self.model = STARLlavaLlamaModel(config, star_config=star_config)
-        elif use_attn_cov_llm:
-            print(f"Use Attn-Cov-LLM: {attn_cov_llm_config}")
-            self.model = AttnCovLLMLlavaLlamaModel(config, attn_cov_llm_config)
+        elif use_tops_prototype:
+            self.model = TOPSPrototypeLlavaLlamaModel(config, tops_prototype_config=tops_prototype_config)
+        elif use_mico_coverage_llm:
+            print(f"Use Attn-Cov-LLM: {mico_coverage_llm_config}")
+            self.model = MiCoCoverageLLMLlavaLlamaModel(config, mico_coverage_llm_config)
         elif use_fastv:
             print(f"Use FastV: {fastv_config}")
             self.model = FastVLlavaLlamaModel(config, fastv_config)
@@ -214,24 +214,24 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         elif use_svdvlm:
             print(f"Use SVDVLM: {svdvlm_config}")
             self.model = SVDLlavaLlamaModel(config, svdvlm_config=svdvlm_config)
-        elif use_prefixvlm:
-            print(f"Use PrefixVLM: {prefixvlm_config}")
-            self.model = PrefixLlavaLlamaModel(config, prefixvlm_config=prefixvlm_config)
+        elif use_tops_early:
+            print(f"Use TOPSEarly: {tops_early_config}")
+            self.model = TOPSEarlyLlavaLlamaModel(config, tops_early_config=tops_early_config)
         elif use_holov2:
             print(f"Use HoloV_2: {holov2_config}")
             self.model = HoloV_2_LlavaLlamaModel(config, holov2_config=holov2_config)
         elif use_idea:
             print(f"Use Idea: {idea_config}")
             self.model = Idea_LlavaLlamaModel(config, idea_config=idea_config)
-        elif use_prefixvlm_2:
-            print(f"Use PrefixVLM_2: {prefixvlm_2_config}")
-            self.model = Prefix_2_LlavaLlamaModel(config, prefixvlm_2_config=prefixvlm_2_config)
+        elif use_tops:
+            print(f"Use TOPS: {tops_config}")
+            self.model = TOPS_LlavaLlamaModel(config, tops_config=tops_config)
         elif use_pdrop:
             print(f"Use PDrop: {pdrop_config}")
             self.model = PDropLlavaLlamaModel(config, pdrop_config=pdrop_config)
         else:
             self.model = LlavaLlamaModel(config)
-        
+
         self.pretraining_tp = config.pretraining_tp
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
@@ -260,7 +260,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         # Initialize weights and apply final processing
         self.post_init()
-    
+
     def get_pruning_method(self):
         return self.pruning_method
 
@@ -458,19 +458,19 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 texts=texts
             )
 
-            # merge_attn_cov_llm / dynamic Attn-Cov-LLM: N after merge differs from
+            # merge_mico_coverage_llm / dynamic Attn-Cov-LLM: N after merge differs from
             # the hardcoded 576/2880, so refresh visual_token_length (and R) here.
             if hasattr(self.model, 'update_runtime_visual_length') and visual_token_num:
                 r_keep = self.model.update_runtime_visual_length(int(visual_token_num))
-                if getattr(self.model, 'dynamic_R', False) and not getattr(self, '_attn_cov_dyn_r_logged', False):
+                if getattr(self.model, 'dynamic_R', False) and not getattr(self, '_mico_coverage_dyn_r_logged', False):
                     print(
-                        f"[attn_cov_llm dynamic_R] N_enter={visual_token_num} "
+                        f"[mico_coverage_llm dynamic_R] N_enter={visual_token_num} "
                         f"T_avg={getattr(self.model, 'T_avg', None)} "
                         f"K={getattr(self.model, 'K', None)} "
                         f"L={len(self.model.layers)} -> R={r_keep}",
                         flush=True,
                     )
-                    self._attn_cov_dyn_r_logged = True
+                    self._mico_coverage_dyn_r_logged = True
 
             # 🔥 MustDrop: Set parameters on model before generate
             # This is needed because generate() internally calls forward()
@@ -502,7 +502,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             **kwargs
         )
 
-        # Record layer visual tokens for FLOPS calculation (for STAR models)
+        # Record layer visual tokens for FLOPS calculation (for TOPSPrototype models)
         if hasattr(self.model, 'layer_visual_tokens') and self.model.layer_visual_tokens:
             self.record_layer_tokens(self.model.layer_visual_tokens)
 

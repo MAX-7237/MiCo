@@ -1,7 +1,7 @@
 # coding=utf-8
 """
-STAR-V3 Stage 2: Progressive visual token pruning for InternVL3.
-Based on Qwen2.5-VL STAR-V3 implementation.
+TOPS-Variant3 Stage 2: Progressive visual token pruning for InternVL3.
+Based on Qwen2.5-VL TOPS-Variant3 implementation.
 """
 
 from functools import partial
@@ -20,7 +20,7 @@ from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
 
-# STAR_V3 剪枝配置: InternVL3-8B (28 layers)
+# TOPS_VARIANT3 剪枝配置: InternVL3-8B (28 layers)
 #
 # 算法: initial = target × 2，三阶段剪枝
 #   Stage 1 (L0-11, 12层): 保持 initial tokens
@@ -29,17 +29,17 @@ logger = logging.get_logger(__name__)
 #
 # 约束: (initial×12 + a×4 + b×12) / 28 = target
 #      即: a + 3b = target
-STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "internvl3_8b": {
         512: [(12, 281), (16, 77)],   # initial=1024, (1024×12+281×4+77×12)/28=512
         256: [(12, 139), (16, 39)],   # initial=512,  (512×12+139×4+39×12)/28=256
-        128: [(12, 70), (16, 19)],    # initial=256,  (256×12+70×4+19×12)/28≈128
+        128: [(12, 71), (16, 19)],    # initial=256,  (256×12+71×4+19×12)/28=128.0 (a+3b=71+57=128 ✓)
     },
 }
 
-class StarV3Qwen2Model(Qwen2Model):
+class TOPSVariant3Qwen2Model(Qwen2Model):
     """
-    STAR-V3 Stage 2 implementation for InternVL3.
+    TOPS-Variant3 Stage 2 implementation for InternVL3.
     Progressive pruning at specific decoder layers with multi-token text guidance.
     """
 
@@ -61,16 +61,16 @@ class StarV3Qwen2Model(Qwen2Model):
             logger.warning(f"Unknown model scale with {config.num_hidden_layers} layers, defaulting to internvl3_8b")
 
         # Load pruning schedule
-        schedule = STAR_V3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
+        schedule = TOPS_VARIANT3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
         if schedule is None:
             self.pruning_layers: Dict[int, int] = {}
-            logger.warning(f"No STAR-V3 schedule for target={visual_token_num}, progressive pruning disabled")
+            logger.warning(f"No TOPS-Variant3 schedule for target={visual_token_num}, progressive pruning disabled")
         else:
             self.pruning_layers = {layer_idx: target for layer_idx, target in schedule}
 
         self.reset_state()
 
-        print(f"[STAR-V3 StarV3Qwen2Model Init]")
+        print(f"[TOPS-Variant3 TOPSVariant3Qwen2Model Init]")
         print(f"  Model scale: {self.scale} ({config.num_hidden_layers} layers)")
         print(f"  Target visual tokens (final): {self.target_visual_tokens}")
         print(f"  Stage 1 expected output: {self.stage1_keep_tokens} (target × 2)")
@@ -240,7 +240,7 @@ class StarV3Qwen2Model(Qwen2Model):
         cache_position: Optional[torch.LongTensor] = None,
         **flash_attn_kwargs: Unpack[FlashAttentionKwargs],
     ) -> BaseModelOutputWithPast:
-        """Forward with STAR-V3 Stage 2 progressive pruning."""
+        """Forward with TOPS-Variant3 Stage 2 progressive pruning."""
 
         # Detect if this is a new generation (reset state)
         def _is_empty_cache(cache):
@@ -308,7 +308,7 @@ class StarV3Qwen2Model(Qwen2Model):
             self.stage1_actual_tokens = detected_visual_len
             self.prefill_done = True
 
-            print(f"\n[STAR-V3 Stage 2 Init]")
+            print(f"\n[TOPS-Variant3 Stage 2 Init]")
             print(f"  Detected visual tokens: {detected_visual_len}")
             print(f"  Expected from Stage 1: {self.stage1_keep_tokens}")
             print(f"  System prompt length: {self.system_prompt_length}")
@@ -340,7 +340,7 @@ class StarV3Qwen2Model(Qwen2Model):
                     output_attentions, use_cache, cache_position, position_embeddings,
                 )
             else:
-                # Check if we should perform STAR-V3 progressive pruning at this layer
+                # Check if we should perform TOPS-Variant3 progressive pruning at this layer
                 should_prune = (
                     star_enabled and
                     layer_idx in self.pruning_layers and
@@ -349,11 +349,11 @@ class StarV3Qwen2Model(Qwen2Model):
                 )
 
                 if should_prune:
-                    # STAR-V3 Progressive Pruning at this layer
+                    # TOPS-Variant3 Progressive Pruning at this layer
                     target = self.pruning_layers[layer_idx]
                     device = hidden_states.device
 
-                    print(f"\n[STAR-V3 Stage 2] Layer {layer_idx}: {self.current_visual_length} → {target}")
+                    print(f"\n[TOPS-Variant3 Stage 2] Layer {layer_idx}: {self.current_visual_length} → {target}")
                     print(f"[DEBUG] BEFORE pruning: shape={hidden_states.shape}")
 
                     visual_start = self.system_prompt_length
@@ -473,7 +473,7 @@ class StarV3Qwen2Model(Qwen2Model):
         # Emit summary once
         if seq_length > 1 and self.prefill_done and not self._stage_summary_emitted:
             print(f"\n{'='*80}")
-            print(f"[STAR-V3 Summary]")
+            print(f"[TOPS-Variant3 Summary]")
             print(f"  Stage 0: {self.stage0_visual_tokens} tokens (original)")
             if self.stage1_actual_tokens is not None:
                 print(f"  Stage 1: {self.stage1_actual_tokens} tokens (THCP output)")
@@ -495,13 +495,13 @@ class StarV3Qwen2Model(Qwen2Model):
         )
 
 
-class StarV3Qwen2ForCausalLM(Qwen2ForCausalLM):
-    """Wrapper for Qwen2ForCausalLM with STAR-V3 Stage 2 decoder."""
+class TOPSVariant3Qwen2ForCausalLM(Qwen2ForCausalLM):
+    """Wrapper for Qwen2ForCausalLM with TOPS-Variant3 Stage 2 decoder."""
     _tied_weights_keys = ["lm_head.weight"]
 
     def __init__(self, config, visual_token_num: int, num_image_token: int = 256):
         super().__init__(config)
-        self.model = StarV3Qwen2Model(config, visual_token_num, num_image_token)
+        self.model = TOPSVariant3Qwen2Model(config, visual_token_num, num_image_token)
 
     def set_system_prompt_length(self, length: int):
         """Set system prompt length for pruning calculations."""

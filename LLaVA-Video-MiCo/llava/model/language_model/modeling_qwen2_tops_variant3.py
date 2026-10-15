@@ -1,6 +1,6 @@
 # coding=utf-8
 """
-STAR-V3 Stage 2 implementation for LLaVA-Video with Qwen2.
+TOPS-Variant3 Stage 2 implementation for LLaVA-Video with Qwen2.
 
 Progressive two-layer pruning with multi-token text guidance.
 Adapted from Qwen2.5-VL implementation for Qwen2 + LLaVA-Video.
@@ -29,7 +29,7 @@ from transformers.models.qwen2.modeling_qwen2 import (
 # Values are per-frame tokens
 # Layer distribution: Layer 1-12 (12 layers), Layer 13-21 (9 layers), Layer 22-28 (7 layers)
 # Average calculation: (stage1_per_frame × 12 + layer12_target × 9 + layer21_target × 7) / 28
-STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
+TOPS_VARIANT3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
     "7b": {
         64: [(12, 23), (21, 7)],   # per-frame: 128→23→7, avg=64.00
         32: [(12, 11), (21, 4)],   # per-frame: 64→11→4, avg=31.96
@@ -38,15 +38,15 @@ STAR_V3_SCHEDULE: Dict[str, Dict[int, List[Tuple[int, int]]]] = {
 }
 
 
-class STARV3Qwen2Model(Qwen2Model):
+class TOPSVariant3Qwen2Model(Qwen2Model):
     """
-    STAR-V3 Stage 2 for LLaVA-Video with Qwen2.
+    TOPS-Variant3 Stage 2 for LLaVA-Video with Qwen2.
 
     Two-layer progressive pruning with multi-token text guidance.
     Assumes Stage-1 THCP has already reduced visual tokens to ~2×target per frame.
     """
 
-    def __init__(self, config: Qwen2Config, starv3_config: Dict):
+    def __init__(self, config: Qwen2Config, tops_variant3_config: Dict):
         super().__init__(config)
 
         # LLaVA-Video configuration
@@ -55,11 +55,11 @@ class STARV3Qwen2Model(Qwen2Model):
         self.video_frame_num = 0
         self.visual_token_num = 0.0
 
-        # STAR-V3 configuration
+        # TOPS-Variant3 configuration
         try:
-            self.target_visual_tokens = int(starv3_config["T"])
+            self.target_visual_tokens = int(tops_variant3_config["T"])
         except (TypeError, ValueError, KeyError):
-            raise ValueError(f"starv3_config must contain 'T' (int), got {starv3_config}")
+            raise ValueError(f"tops_variant3_config must contain 'T' (int), got {tops_variant3_config}")
 
         self.stage1_keep_tokens = max(1, self.target_visual_tokens) * 2
         self.stage0_visual_tokens = self.visual_token_length
@@ -70,17 +70,17 @@ class STARV3Qwen2Model(Qwen2Model):
         else:
             self.scale = "unknown"
 
-        schedule = STAR_V3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
+        schedule = TOPS_VARIANT3_SCHEDULE.get(self.scale, {}).get(self.target_visual_tokens)
         if schedule is None:
             self.pruning_layers: Dict[int, int] = {}
-            print(f"[STAR-V3 Warning] No schedule for T={self.target_visual_tokens}, "
+            print(f"[TOPS-Variant3 Warning] No schedule for T={self.target_visual_tokens}, "
                   f"scale={self.scale}. Stage 2 pruning disabled.")
         else:
             self.pruning_layers = {layer_idx: target for layer_idx, target in schedule}
 
         self.reset_state()
 
-        print(f"[STAR-V3 Stage2 Init] T={self.target_visual_tokens}, "
+        print(f"[TOPS-Variant3 Stage2 Init] T={self.target_visual_tokens}, "
               f"Stage1_per_frame={self.stage1_keep_tokens}, "
               f"Pruning layers: {list(self.pruning_layers.keys())}")
 
@@ -229,7 +229,7 @@ class STARV3Qwen2Model(Qwen2Model):
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
         if self.gradient_checkpointing and self.training and use_cache:
-            print("[STAR-V3] Warning: use_cache=True incompatible with gradient checkpointing. Setting False.")
+            print("[TOPS-Variant3] Warning: use_cache=True incompatible with gradient checkpointing. Setting False.")
             use_cache = False
 
         # Initialize cache
@@ -296,7 +296,7 @@ class STARV3Qwen2Model(Qwen2Model):
             self.prefill_done = True
             self.visual_token_sum = 0.0
 
-            print(f"\n[STAR-V3 Stage 1 Output] Detected {detected_visual_len} visual tokens")
+            print(f"\n[TOPS-Variant3 Stage 1 Output] Detected {detected_visual_len} visual tokens")
             print(f"  Expected per-frame Stage1: {self.stage1_keep_tokens}")
             print(f"  Fixed frame count: {self.actual_video_frames}")
 
@@ -352,7 +352,7 @@ class STARV3Qwen2Model(Qwen2Model):
 
             if should_prune:
                 print(f"\n{'='*80}")
-                print(f"[STAR-V3 Stage 2] Layer {layer_idx} Progressive Pruning")
+                print(f"[TOPS-Variant3 Stage 2] Layer {layer_idx} Progressive Pruning")
                 print(f"  Current visual tokens: {self.current_visual_length}")
                 print(f"  Fixed frames: {self.actual_video_frames}")
                 print(f"  Target per-frame: {target_per_frame}")
@@ -440,7 +440,7 @@ class STARV3Qwen2Model(Qwen2Model):
         # Emit summary once
         if seq_length > 1 and self.prefill_done and not self._stage_summary_emitted:
             print(f"\n{'='*80}")
-            print(f"[STAR-V3 Summary]")
+            print(f"[TOPS-Variant3 Summary]")
             print(f"  Stage 0 (input): {self.stage0_visual_tokens} tokens/frame")
             print(f"  Stage 1 (THCP): {self.stage1_actual_tokens} total tokens detected")
             if self.stage2_events:
