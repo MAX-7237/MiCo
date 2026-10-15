@@ -91,7 +91,7 @@ export REPO_ROOT="$PWD"
 
 Run the setup block for the component you need. If its Conda environment already exists, skip `conda create` and activate it. Keep the environment profiles separate: image LLaVA, video LLaVA, and the Qwen families use different Transformers versions. Dependency pins and installation caveats are documented in the [environment guide](docs/RUNNING.md#environments).
 
-All examples start with `--dry-run`, which prints the selected configuration without loading weights. **Replace the example data paths, then remove `--dry-run` to run inference or evaluation.**
+The commands below run inference or evaluation directly, assuming the environment, datasets, and model weights are configured. Replace `/path/to/...` with your local paths.
 
 ### 1. LLaVA image models — four backbones
 
@@ -117,19 +117,19 @@ Prepare the benchmark question JSONL and image directory, then choose one of the
 ```bash
 python run_mico.py --model llava-1.5-7b --tokens 128 \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava-1.5-7b/answers.jsonl --dry-run
+  --answers-file outputs/llava-1.5-7b/answers.jsonl
 
 python run_mico.py --model llava-1.5-13b --tokens 128 \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava-1.5-13b/answers.jsonl --dry-run
+  --answers-file outputs/llava-1.5-13b/answers.jsonl
 
 python run_mico.py --model llava-next-7b --tokens 640 \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava-next-7b/answers.jsonl --dry-run
+  --answers-file outputs/llava-next-7b/answers.jsonl
 
 python run_mico.py --model llava-next-13b --tokens 640 \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava-next-13b/answers.jsonl --dry-run
+  --answers-file outputs/llava-next-13b/answers.jsonl
 
 ```
 
@@ -149,7 +149,7 @@ python -m pip check
 
 python run_mico.py --model llava-video-7b --tokens 32 \
   --model-path lmms-lab/LLaVA-Video-7B-Qwen2 \
-  --dataset videomme --nproc 1 --work-dir outputs/video --dry-run
+  --dataset videomme --nproc 1 --work-dir outputs/video
 ```
 
 The adapter uses the Qwen conversation template and samples up to **64 frames**. The token budget is **per frame** (`32/16`). Prepare VideoMME according to `lmms-eval/lmms_eval/tasks/videomme`, or select another registered video task with `--dataset`. Predictions and evaluation artifacts go under `--work-dir`. The recovered video environment remains a candidate profile pending GPU validation.
@@ -168,11 +168,11 @@ python -m pip check
 
 # Qwen2.5-VL-7B-Instruct
 python run_mico.py --model qwen2.5-vl-7b --tokens 256 \
-  --dataset AI2D_TEST --nproc 1 --work-dir outputs/qwen25 --dry-run
+  --dataset AI2D_TEST --nproc 1 --work-dir outputs/qwen25
 
 # InternVL3-8B
 python run_mico.py --model internvl3-8b --tokens 256 \
-  --dataset AI2D_TEST --nproc 1 --work-dir outputs/internvl3 --dry-run
+  --dataset AI2D_TEST --nproc 1 --work-dir outputs/internvl3
 ```
 
 Use `--tokens 256` or `128`. Set `LMUData` to your dataset/cache directory when needed, and follow the selected VLMEvalKit dataset adapter's preparation instructions. To use local model weights, edit the matching entry in `vlmeval/config.py`; these VLMEval launchers do not accept `--model-path`. Some benchmarks require an external judge model in addition to inference.
@@ -193,7 +193,7 @@ python -m pip install -r requirements.txt
 python -m pip check
 
 python run_mico.py --model qwen3-vl-8b --tokens 128 \
-  --dataset AI2D_TEST --nproc 1 --work-dir outputs/qwen3 --dry-run
+  --dataset AI2D_TEST --nproc 1 --work-dir outputs/qwen3
 ```
 
 Use budgets `256/128`. Dataset preparation and local-weight configuration follow the same VLMEvalKit conventions as the preceding group.
@@ -210,10 +210,10 @@ python -m pip check
 
 python run_mico.py --model-path Qwen/Qwen3.5-9B \
   --image /path/to/image.jpg --question 'What is shown in the image?' \
-  --tokens 128 --trace-file outputs/trace.json --dry-run
+  --tokens 128 --trace-file outputs/trace.json
 ```
 
-The default is the MiCo QK recipe at layer 12, with SDPA, one image, batch size one, and cached greedy decoding. Use budgets `128/256`. Without `--dry-run`, the answer is printed and pruning diagnostics are saved to `--trace-file`. This is a single-image inference entry, not a complete benchmark scoring pipeline. See the [Qwen3.5 guide](Qwen3.5-MiCo/README.md) for controls and core tests.
+The default is the MiCo QK recipe at layer 12, with SDPA, one image, batch size one, and cached greedy decoding. Use budgets `128/256`. The answer is printed and pruning diagnostics are saved to `--trace-file`. This is a single-image inference entry, not a complete benchmark scoring pipeline. See the [Qwen3.5 guide](Qwen3.5-MiCo/README.md) for controls and core tests.
 
 See the [full evaluation guide](docs/RUNNING.md#evaluation) for additional configuration and scoring details.
 

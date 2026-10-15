@@ -54,7 +54,7 @@ Candidate dependency adjustments from the recovered snapshots: video Triton 2.1.
 
 Download the model weights and datasets separately, accepting their respective licenses. Set `HF_HOME` and `LMUData` if you want custom cache and VLMEval data locations. The repository contains no model weights or datasets. Any `/path/to/local-assets` values in legacy adapters are placeholders that must be configured before using those adapters.
 
-Run commands from the indicated directory. Start with `--dry-run` to inspect the selected method and command; remove it to execute. Dry runs do not load model weights or validate GPU execution.
+Run commands from the indicated directory with the environment, datasets, and model weights configured. The examples execute inference or evaluation directly.
 
 ### LLaVA image models
 
@@ -63,7 +63,7 @@ cd LLaVA-MiCo
 python run_mico.py --model llava-1.5-7b --tokens 128 \
   --model-path liuhaotian/llava-v1.5-7b \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
-  --answers-file outputs/llava15/answers.jsonl --dry-run
+  --answers-file outputs/llava15/answers.jsonl
 ```
 
 Supported aliases: `llava-1.5-7b`, `llava-1.5-13b`, `llava-next-7b`, `llava-next-13b`. Typical LLaVA-1.5 budgets are 128/64/32; NeXT total budgets are 640/320/160. `--tokens` is passed unchanged. The launcher generates predictions through `llava.eval.model_vqa_loader`; use the appropriate dataset scorer afterwards. MMBench and ScienceQA also have dedicated modules under `llava/eval`.
@@ -73,9 +73,9 @@ Supported aliases: `llava-1.5-7b`, `llava-1.5-13b`, `llava-next-7b`, `llava-next
 ```bash
 cd VLMEvalKit-MiCo
 python run_mico.py --model qwen2.5-vl-7b --tokens 128 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/qwen25 --dry-run
+  --nproc 1 --work-dir outputs/qwen25
 python run_mico.py --model internvl3-8b --tokens 256 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/internvl3 --dry-run
+  --nproc 1 --work-dir outputs/internvl3
 ```
 
 ### Qwen3-VL
@@ -83,7 +83,7 @@ python run_mico.py --model internvl3-8b --tokens 256 --dataset AI2D_TEST \
 ```bash
 cd VLMEvalKit-MiCo-Qwen3
 python run_mico.py --model qwen3-vl-8b --tokens 128 --dataset AI2D_TEST \
-  --nproc 1 --work-dir outputs/qwen3 --dry-run
+  --nproc 1 --work-dir outputs/qwen3
 ```
 
 VLMEval launchers use the model registry in `vlmeval/config.py`; change that registry if using local weights. Their `--model-path` argument is not supported. Consult the dataset adapter for preparation and scoring requirements, including optional external judge models. Clear any previous stage-1 ablation settings (`MICO_STAGE1_MULT`, `MICO_NO_NORM`, `MICO_NO_COVERAGE`, `MICO_NO_ATTENTION`, `MICO_STAGE1_MULT`) when running the default configuration.
@@ -94,7 +94,7 @@ VLMEval launchers use the model registry in `vlmeval/config.py`; change that reg
 cd LLaVA-Video-MiCo
 python run_mico.py --model llava-video-7b --tokens 32 --dataset videomme \
   --model-path lmms-lab/LLaVA-Video-7B-Qwen2 \
-  --nproc 1 --work-dir outputs/video --dry-run
+  --nproc 1 --work-dir outputs/video
 ```
 
 Video evaluation includes the vendored `lmms-eval` adapter, uses the Qwen conversation template and a maximum of 64 frames, and interprets the token budget per frame. Prepare datasets according to the selected task configuration under `lmms-eval/lmms_eval/tasks`.

@@ -14,6 +14,6 @@ python run_mico.py --model-path Qwen/Qwen3.5-9B --image /path/to/image.jpg \
 python -m unittest discover -s core/tests -p 'test_*.py' -v
 ```
 
-Use `--dry-run` to inspect configuration without loading dependencies or weights. `--variant baseline` and `--variant mico_s1` expose controls. The stage-1-only control retains `T` tokens; it does not retain `2T` like the first stage of the two-stage method. This directory provides single-image inference and core tests, not an eight-benchmark scoring pipeline. Weights and datasets are external.
+`--variant baseline` and `--variant mico_s1` expose controls. The stage-1-only control retains `T` tokens; it does not retain `2T` like the first stage of the two-stage method. This directory provides single-image inference and core tests, not an eight-benchmark scoring pipeline. Weights and datasets are external.
 
 The core also preserves `native_hybrid_task_v1` with task-token binding and native DeltaNet beta weighting. Advanced callers must derive and bind the exact question-token mask before generation; the simple public launcher intentionally exposes only the QK recipe. Random-weight CPU tests exercise the native 32-layer architecture, cache lengths, budget accounting, cross-image resets, and position preservation. They do not establish 9B benchmark accuracy or GPU performance. The optional historical-source parity test is skipped unless `QWEN35_LEGACY_CORE` is supplied.
