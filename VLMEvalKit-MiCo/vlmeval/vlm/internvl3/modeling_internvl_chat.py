@@ -1060,7 +1060,7 @@ class InternVLChatModelPruning(PreTrainedModel):
             # Same inner raw-CLS×coverage as LLaVA. vit_proj*: cosine on
             # pre-mlp1 ViT; mico_coverage_proj*: cosine on mlp1 (projector) output.
             from vlmeval.vlm.mico_coverage_select import inner_weighted_raw_cls_select
-            keep_2t = '_llm_' in self.pruning_method
+            keep_2t = '_llm_' in self.pruning_method or _is_mico(self.pruning_method)
             use_vit = 'vit_proj' in self.pruning_method
             # S1 budget = m*T (m reads MICO_STAGE1_MULT / the `_s1m<M>` suffix).
             _s1m = int(getattr(self, '_s1_mult', 2) or 2) if keep_2t else 1

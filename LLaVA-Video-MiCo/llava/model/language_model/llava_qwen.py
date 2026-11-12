@@ -120,7 +120,7 @@ class LlavaQwenForCausalLM(Qwen2ForCausalLM, LlavaMetaForCausalLM):
                 raise ValueError('mico_coverage cannot be combined with another LLM pruner')
             if visual_token_num is None:
                 raise ValueError('mico_coverage requires an explicit visual_token_num target')
-            mico_coverage_config = {'T': int(visual_token_num), 'K': int(os.environ.get('MICO_COVERAGE_K', '12')),
+            mico_coverage_config = {'T': int(visual_token_num), 'K': int(os.environ.get('MICO_COVERAGE_K', '6')),
                                'mico': pruning_method == 'mico_projected_llm_12'}
             self.model = MiCoCoverageLlavaQwenModel(config, mico_coverage_config)
         elif use_fastv:

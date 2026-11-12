@@ -1569,7 +1569,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     # pre-merger ViT; mico_coverage_proj*: cosine on merger output.
                     # Every llm_K arm keeps 2T; single-stage controls keep T.
                     from vlmeval.vlm.mico_coverage_select import inner_weighted_raw_cls_select
-                    keep_2t = '_llm_' in self.pruning_method
+                    keep_2t = '_llm_' in self.pruning_method or _is_mico(self.pruning_method)
                     use_vit = 'vit_proj' in self.pruning_method
                     # S1 budget multiple of T. Default 2 keeps every pre-existing
                     # arm bit-identical; the S1 ablation sweeps 3/4/5T.

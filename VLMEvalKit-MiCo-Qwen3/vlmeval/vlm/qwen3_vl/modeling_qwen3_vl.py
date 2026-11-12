@@ -1827,7 +1827,7 @@ class Qwen3VLForConditionalGenerationPruning(_BASE_CONDITIONAL_GEN):
                     # Same inner raw-attn×coverage as LLaVA/InternVL. Weight is last-ViT
                     # attention (Qwen3 has no CLS; InternVL uses CLS query row). Cosine
                     # space: vit_proj* = pre-merger ViT; mico_coverage_proj* = merger/projector out.
-                    keep_2t = '_llm_' in self.pruning_method
+                    keep_2t = '_llm_' in self.pruning_method or _is_mico(self.pruning_method)
                     use_vit = 'vit_proj' in self.pruning_method
                     stage1_multiplier = self.model.stage1_multiplier
                     stage1_keep_num = min(max(1, self.target_visual_token_num * stage1_multiplier), N)

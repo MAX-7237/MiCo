@@ -347,7 +347,8 @@ class LlavaMetaForCausalLM(ABC):
             t_patch = keep_total // B if (B > 1 and aspect == 'anyres') else keep_total
             # The H-ViT family is single-S2 dynamic pruning: retain 2T here,
             # then let its one LLM cut solve R for the requested average T.
-            h_vit = self.pruning_method.startswith('mico_s1')
+            h_vit = (self.pruning_method.startswith('mico_s1') or
+                     _mmtok_re.fullmatch(r"mico_[1-9][0-9]*", self.pruning_method) is not None)
             keep_2t = self.pruning_method == 'mico_coverage_vit_proj_llm_12' or self.pruning_method.startswith('mico')
             n_keep = max(1, min((2 * t_patch) if keep_2t else t_patch, N))
             new_masks = []

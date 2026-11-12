@@ -105,6 +105,7 @@ Choose the model family below. Each group includes environment setup and a runna
 git clone https://github.com/MAX-7237/MiCo.git
 cd MiCo
 export REPO_ROOT="$PWD"
+export PYTHONNOUSERSITE=1
 ```
 
 Run the setup block for the component you need. If its Conda environment already exists, skip `conda create` and activate it. Keep the environment profiles separate: image LLaVA, video LLaVA, and the Qwen families use different Transformers versions. Dependency pins and installation caveats are documented in the [environment guide](docs/RUNNING.md#environments).
@@ -162,6 +163,7 @@ cd "$REPO_ROOT/LLaVA-Video-MiCo"
 conda create -n llavavid python=3.10 -y
 conda activate llavavid
 python -m pip install -r requirements.txt
+python ../tools/repair_decord_wheel.py
 python -m pip install --no-build-isolation -r requirements-flash-attn.txt
 python -m pip check
 
@@ -170,7 +172,7 @@ python run_mico.py --model llava-video-7b --tokens 32 \
   --dataset videomme --nproc 1 --work-dir outputs/video
 ```
 
-The adapter uses the Qwen conversation template and samples up to **64 frames**. The token budget is **per frame** (`32/16`). Prepare VideoMME according to `lmms-eval/lmms_eval/tasks/videomme`, or select another registered video task with `--dataset`. Predictions and evaluation artifacts go under `--work-dir`. The recovered video environment remains a candidate profile pending GPU validation.
+The adapter uses the Qwen conversation template and samples up to **64 frames**. The token budget is **per frame** (`32/16`). Prepare VideoMME according to `lmms-eval/lmms_eval/tasks/videomme`, or select another registered video task with `--dataset`. Predictions and evaluation artifacts go under `--work-dir`. The video environment passed real 64-frame GPU inference and pruning-budget checks at both budgets; full video accuracy reproduction has not been tested.
 
 ### 3. Qwen2.5-VL and InternVL3
 
@@ -181,6 +183,7 @@ cd "$REPO_ROOT/VLMEvalKit-MiCo"
 conda create -n vlmevalkit-qwen2.5vl python=3.11 -y
 conda activate vlmevalkit-qwen2.5vl
 python -m pip install -r requirements.txt
+python ../tools/repair_decord_wheel.py
 python -m pip install --no-build-isolation -r requirements-flash-attn.txt
 python -m pip check
 
@@ -208,6 +211,7 @@ cd "$REPO_ROOT/VLMEvalKit-MiCo-Qwen3"
 conda create -n vlmevalkit-qwen3vl python=3.12 -y
 conda activate vlmevalkit-qwen3vl
 python -m pip install -r requirements.txt
+python ../tools/repair_decord_wheel.py
 python -m pip check
 
 python run_mico.py --model qwen3-vl-8b --tokens 128 \
@@ -224,6 +228,7 @@ Activate the shared environment created above. If you only need Qwen3.5, create 
 cd "$REPO_ROOT/Qwen3.5-MiCo"
 conda activate vlmevalkit-qwen3vl
 python -m pip install -r requirements.txt
+python ../tools/repair_decord_wheel.py
 python -m pip check
 
 python run_mico.py --model-path Qwen/Qwen3.5-9B \
@@ -237,7 +242,7 @@ See the [full evaluation guide](docs/RUNNING.md#evaluation) for additional confi
 
 ## Validation
 
-This is a **source-preview release**. Static checks and launcher dry runs pass; the recovered Qwen3.5 core also passes seven random-weight CPU model tests. Full clean-environment installation and real-weight GPU benchmark reproduction remain pending. See [validation records](VALIDATION.json) and [Qwen3.5 checks](Qwen3.5-MiCo/VALIDATION.json).
+The four environment profiles have been exercised with real model weights. Image-model checks use MME; video checks use 64-frame inference at both supported budgets. Paper-score reproduction remains under verification. See [validation records](VALIDATION.json) for scope and limitations.
 
 The README uses original figures and LaTeX tables from the paper project. PDF images are rasterized for GitHub display; click them for the vector originals. [Asset provenance](assets/SOURCES.json) records source files and hashes.
 

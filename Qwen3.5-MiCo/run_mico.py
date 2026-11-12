@@ -34,7 +34,7 @@ def main():
     model = Qwen3_5ForConditionalGeneration.from_pretrained(
         a.model_path, torch_dtype=torch.bfloat16, device_map='cuda', attn_implementation='sdpa').eval()
     messages = [{'role': 'user', 'content': [
-        {'type': 'image', 'image': image.as_uri()}, {'type': 'text', 'text': a.question}]}]
+        {'type': 'image', 'image': str(image)}, {'type': 'text', 'text': a.question}]}]
     inputs = processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
         enable_thinking=False, return_dict=True, return_tensors='pt').to(model.device)
     ctl = install_pruning(model, a.variant,
