@@ -1,4 +1,4 @@
-# Candidate dependency pins; see the root README for validation status.
+# Pinned dependencies for this component; see the root README for setup.
 accelerate==0.21.0
 bitsandbytes==0.45.5
 certifi==2026.1.4

@@ -26,7 +26,7 @@ Use Linux x86_64 with an NVIDIA GPU and a CUDA-compatible driver. Keep these env
 
 | Directory | Environment name | Python | PyTorch / torchvision | Transformers | FlashAttention |
 | --- | --- | --- | --- | --- | --- |
-| `LLaVA-MiCo` | `fastv` | 3.10 | 2.1.2 / 0.16.2 | 4.37.2 | Not present in recorded environment |
+| `LLaVA-MiCo` | `llava` | 3.10 | 2.1.2 / 0.16.2 | 4.37.2 | Not present in recorded environment |
 | `VLMEvalKit-MiCo` | `vlmevalkit-qwen2.5vl` | 3.11 | 2.7.0+cu126 / 0.22.0+cu126 | 4.52.3 | 2.8.3 |
 | `VLMEvalKit-MiCo-Qwen3` | `vlmevalkit-qwen3vl` | 3.12 | 2.7.0 / 0.22.0 | 5.2.0 | Not present in recorded environment |
 | `LLaVA-Video-MiCo` | `llavavid` | 3.10 | 2.1.2+cu121 / 0.16.2+cu121 | 4.41.2 | 2.6.3 |
@@ -70,6 +70,15 @@ python run_mico.py --model llava-1.5-7b --tokens 128 \
   --question-file /path/to/questions.jsonl --image-folder /path/to/images \
   --answers-file outputs/llava15/answers.jsonl
 ```
+
+For LLaVA MME, use the prepared benchmark questions with this exact answer instruction:
+
+```text
+<original MME question>
+Answer the question using a single word or phrase.
+```
+
+Keep `--conv-mode vicuna_v1`, greedy decoding (`temperature=0`), and the benchmark's image/question pairing. Do not replace the answer instruction with `Please answer yes or no.` when comparing with the paper protocol. This format applies to the LLaVA MME input JSONL; other model families use their native benchmark adapters. Use one benchmark process per GPU.
 
 Supported aliases: `llava-1.5-7b`, `llava-1.5-13b`, `llava-next-7b`, `llava-next-13b`. Typical LLaVA-1.5 budgets are 128/64/32; NeXT total budgets are 640/320/160. `--tokens` is passed unchanged. The launcher generates predictions through `llava.eval.model_vqa_loader`; use the appropriate dataset scorer afterwards. MMBench and ScienceQA also have dedicated modules under `llava/eval`.
 

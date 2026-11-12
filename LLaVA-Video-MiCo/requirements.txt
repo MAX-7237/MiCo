@@ -1,4 +1,4 @@
-# Candidate dependency pins; see the root README for validation status.
+# Pinned dependencies for this component; see the root README for setup.
 --extra-index-url https://download.pytorch.org/whl/cu121
 
 accelerate==1.7.0

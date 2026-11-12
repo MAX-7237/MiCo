@@ -91,7 +91,7 @@ The original table reports relative performance against each model's unpruned re
 
 | Model family | Implementation | Environment |
 | :--- | :--- | :--- |
-| LLaVA-1.5 / LLaVA-NeXT · 7B & 13B | [LLaVA-MiCo](LLaVA-MiCo) | `fastv` |
+| LLaVA-1.5 / LLaVA-NeXT · 7B & 13B | [LLaVA-MiCo](LLaVA-MiCo) | `llava` |
 | LLaVA-Video · 7B | [LLaVA-Video-MiCo](LLaVA-Video-MiCo) | `llavavid` |
 | Qwen2.5-VL · 7B / InternVL3 · 8B | [VLMEvalKit-MiCo](VLMEvalKit-MiCo) | `vlmevalkit-qwen2.5vl` |
 | Qwen3-VL · 8B | [VLMEvalKit-MiCo-Qwen3](VLMEvalKit-MiCo-Qwen3) | `vlmevalkit-qwen3vl` |
@@ -116,8 +116,8 @@ The commands below run inference or evaluation directly, assuming the environmen
 
 ```bash
 cd "$REPO_ROOT/LLaVA-MiCo"
-conda create -n fastv python=3.10 -y
-conda activate fastv
+conda create -n llava python=3.10 -y
+conda activate llava
 python -m pip install -r requirements.txt
 python -m pip check
 ```
@@ -131,7 +131,7 @@ python -m pip check
 
 MiCo passes the NeXT total budget directly to the implementation: use `640/320/160`.
 
-Prepare the benchmark question JSONL and image directory, then choose one of the four commands:
+Prepare the benchmark question JSONL and image directory, then choose one of the four commands: For MME, preserve the original question followed by `\nAnswer the question using a single word or phrase.`; see the [benchmark input format](docs/RUNNING.md#llava-image-models).
 
 ```bash
 python run_mico.py --model llava-1.5-7b --tokens 128 \
@@ -156,7 +156,7 @@ The launcher selects the default Hugging Face model ID for each alias; use `--mo
 
 ### 2. LLaVA-Video — 7B Qwen2
 
-Video has its own environment; do not install its dependencies into `fastv`.
+Video has its own environment; do not install its dependencies into `llava`.
 
 ```bash
 cd "$REPO_ROOT/LLaVA-Video-MiCo"

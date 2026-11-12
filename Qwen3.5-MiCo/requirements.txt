@@ -1,4 +1,4 @@
-# Candidate dependency pins; see the root README for validation status.
+# Pinned dependencies for this component; see the root README for setup.
 accelerate==1.12.0
 annotated-doc==0.0.4
 annotated-types==0.7.0
