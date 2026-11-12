@@ -3273,7 +3273,9 @@ class LlavaMetaForCausalLM(ABC):
             if merged_features is not None:
                 merged_features = torch.split(merged_features, split_sizes, dim=0)
             mm_patch_merge_type = getattr(self.config, 'mm_patch_merge_type', 'flat')
-            mm_patch_merge_type = mm_patch_merge_type.replace('_unpad', '')
+            # Vanilla must preserve the checkpoint's native any-resolution merge.
+            if self.pruning_method != 'vanilla':
+                mm_patch_merge_type = mm_patch_merge_type.replace('_unpad', '')
             image_aspect_ratio = getattr(self.config, 'image_aspect_ratio', 'square')
             if mm_patch_merge_type == 'flat':
                 image_features = [x.flatten(0, 1) for x in image_features]
