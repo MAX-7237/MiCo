@@ -34,7 +34,7 @@ Use Linux x86_64 with an NVIDIA GPU and a CUDA-compatible driver. Keep these env
 Each directory provides its own `requirements.txt`; install only the one for the model you need. For example:
 
 ```bash
-git clone git@github.com:MAX-7237/MiCo.git
+# Download this repository and extract it into the MiCo directory.
 cd MiCo
 conda create -n vlmevalkit-qwen2.5vl python=3.11 -y
 conda activate vlmevalkit-qwen2.5vl

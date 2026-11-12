@@ -6,27 +6,9 @@
 
 ### Mutual Information Coverage Optimization through Semantic Erasure Modeling<br>for Efficient MLLM Inference
 
-<p align="center">
-Tinghao Wang<sup>1,2,*</sup>, Yichen Guo<sup>1,3,*</sup>, Qizhe Zhang<sup>1</sup>, Yuan Zhang<sup>1</sup>, Weimin Ouyang<sup>1</sup>,<br>
-Rui Huang<sup>4</sup>, Jiajun Cao<sup>1</sup>, Sixiang Chen<sup>1</sup>, Hao Jiang<sup>1,2</sup>, Jixian Wu<sup>5</sup>,<br>
-Zheng Lu<sup>2</sup>, Bofan Zhu<sup>2</sup>, Renyuan Li<sup>2</sup>, Shanghang Zhang<sup>1,†</sup>
-</p>
-
-</div>
-
-<p align="left">
-<sup>1</sup> State Key Laboratory of Multimedia Information Processing, School of Computer Science, Peking University; <sup>2</sup> University of Electronic Science and Technology of China; <sup>3</sup> Nanyang Technological University; <sup>4</sup> The University of Hong Kong; <sup>5</sup> New York University
-</p>
-
-<div align="center">
-
-<p align="center">
-<sup>*</sup> Equal contribution. &nbsp; <sup>†</sup> Corresponding author.
-</p>
-
 **Training-free visual token pruning · Image & video understanding · 7B–13B models**
 
-[Paper](https://arxiv.org/abs/2609.34330) · [Method](#method) · [Results](#results) · [Quick start](#quick-start) · [Evaluation guide](docs/RUNNING.md)
+[Method](#method) · [Results](#results) · [Quick start](#quick-start) · [Evaluation guide](docs/RUNNING.md)
 
 </div>
 
@@ -102,7 +84,7 @@ The original table reports relative performance against each model's unpruned re
 Choose the model family below. Each group includes environment setup and a runnable launcher example. Use **Linux with an NVIDIA GPU**, and download the model weights and benchmark data separately.
 
 ```bash
-git clone https://github.com/MAX-7237/MiCo.git
+# Download this repository and extract it into the MiCo directory.
 cd MiCo
 export REPO_ROOT="$PWD"
 export PYTHONNOUSERSITE=1
@@ -245,17 +227,6 @@ See the [full evaluation guide](docs/RUNNING.md#evaluation) for additional confi
 The four environment profiles have been exercised with real model weights. Image-model checks use MME; video checks use 64-frame inference at both supported budgets. Paper-score reproduction remains under verification. See [validation records](VALIDATION.json) for scope and limitations.
 
 The README uses original figures and LaTeX tables from the paper project. PDF images are rasterized for GitHub display; click them for the vector originals. [Asset provenance](assets/SOURCES.json) records source files and hashes.
-
-## Citation
-
-```bibtex
-@article{wang2026mico,
-  title={MiCo: Mutual Information Coverage Optimization through Semantic Erasure Modeling for Efficient MLLM Inference},
-  author={Wang, Tinghao and Guo, Yichen and Zhang, Qizhe and Zhang, Yuan and Ouyang, Weimin and Huang, Rui and Cao, Jiajun and Chen, Sixiang and Jiang, Hao and Wu, Jixian and Lu, Zheng and Zhu, Bofan and Li, Renyuan and Zhang, Shanghang},
-  journal={arXiv preprint arXiv:2609.34330},
-  year={2026}
-}
-```
 
 ## Acknowledgements
 
