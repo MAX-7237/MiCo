@@ -4,11 +4,11 @@
 
 | Model family | Implementation | Environment |
 | :--- | :--- | :--- |
-| LLaVA-1.5 / LLaVA-NeXT · 7B & 13B | [LLaVA-MiCo](LLaVA-MiCo) | `llava` |
-| LLaVA-Video · 7B | [LLaVA-Video-MiCo](LLaVA-Video-MiCo) | `llavavid` |
-| Qwen2.5-VL · 7B / InternVL3 · 8B | [VLMEvalKit-MiCo](VLMEvalKit-MiCo) | `vlmevalkit-qwen2.5vl` |
-| Qwen3-VL · 8B | [VLMEvalKit-MiCo-Qwen3](VLMEvalKit-MiCo-Qwen3) | `vlmevalkit-qwen3vl` |
-| Qwen3.5 · 9B | [Qwen3.5-MiCo](Qwen3.5-MiCo) | `vlmevalkit-qwen3vl` |
+| LLaVA-1.5 / LLaVA-NeXT · 7B & 13B | [LLaVA-MiCo](LLaVA-MiCo/run_mico.py) | `llava` |
+| LLaVA-Video · 7B | [LLaVA-Video-MiCo](LLaVA-Video-MiCo/run_mico.py) | `llavavid` |
+| Qwen2.5-VL · 7B / InternVL3 · 8B | [VLMEvalKit-MiCo](VLMEvalKit-MiCo/run_mico.py) | `vlmevalkit-qwen2.5vl` |
+| Qwen3-VL · 8B | [VLMEvalKit-MiCo-Qwen3](VLMEvalKit-MiCo-Qwen3/run_mico.py) | `vlmevalkit-qwen3vl` |
+| Qwen3.5 · 9B | [Qwen3.5-MiCo](Qwen3.5-MiCo/run_mico.py) | `vlmevalkit-qwen3vl` |
 
 ## Quick start
 
