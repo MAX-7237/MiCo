@@ -1,73 +1,4 @@
-<div align="center">
-
-<img src="assets/mascot.png" width="96" alt="MiCo mascot" />
-
 # MiCo
-
-### Mutual Information Coverage Optimization through Semantic Erasure Modeling<br>for Efficient MLLM Inference
-
-**Training-free visual token pruning · Image & video understanding · 7B–13B models**
-
-[Method](#method) · [Results](#results) · [Quick start](#quick-start) · [Evaluation guide](docs/RUNNING.md)
-
-</div>
-
----
-
-MiCo selects a compact set of visual evidence through **two stages of mutual information coverage optimization**: a representative visual candidate pool before the language model, followed by task-aware refinement inside it.
-
-<table>
-<tr>
-<th align="center">94.4% visual tokens pruned</th>
-<th align="center">97.5% relative performance</th>
-<th align="center">2.31× video speedup</th>
-</tr>
-<tr>
-<td align="center">LLaVA-NeXT-13B · T = 160</td>
-<td align="center">NeXT-13B · ten-benchmark aggregate</td>
-<td align="center">LLaVA-Video-7B · T = 16/frame</td>
-</tr>
-</table>
-
-<p align="center">
-<img src="assets/teaser-process.png" width="30%" alt="Original paper illustration of MiCo's two-stage token selection" />
-<img src="assets/teaser-results.png" width="34%" alt="Original cross-model relative-performance radar from the MiCo paper" />
-<img src="assets/teaser-efficiency.png" width="29%" alt="Original NeXT-13B POPE quality versus one-token speedup plot" />
-</p>
-
-<p align="center"><sub>Original paper teaser panels: visual evidence selection, cross-model performance, and the quality–speed trade-off.</sub></p>
-
-> Results shown here are reported in the paper. Repository verification and paper benchmark reproduction are tracked separately in [Validation](#validation).
-
-## Method
-
-<a href="assets/method.pdf"><img src="assets/method.png" width="100%" alt="MiCo's original framework figure from the LaTeX project" /></a>
-
-1. **Visual candidate selection.** Use feature magnitude, visual attention, and coverage to retain representative evidence before LLM processing.
-2. **Task-aware refinement.** Use text-to-visual attention at the selected decoder layer to refine that candidate pool under a token budget.
-
-Both stages greedily optimize an observable weighted coverage objective. The paper establishes monotonicity and submodularity for this surrogate. The stage-2 budget is chosen to match the target layer-average token count.
-
-## Results
-
-### Across model families
-
-<a href="assets/results-table.pdf"><img src="assets/results-table.png" width="100%" alt="Original MiCo cross-model results table, compiled from the paper LaTeX" /></a>
-
-The original table reports relative performance against each model's unpruned reference. It covers LLaVA, Qwen2.5-VL, Qwen3-VL, Qwen3.5, and InternVL3 at the paper's token budgets.
-
-### Quality and inference efficiency
-
-<a href="assets/efficiency.pdf"><img src="assets/efficiency.png" width="100%" alt="Original MiCo performance-efficiency plots and latency breakdown" /></a>
-
-**Image and video protocols differ:** NeXT plots use one-token latency; video plots use complete-answer latency. See the paper for the benchmark and generation protocol behind each point.
-
-<details>
-<summary><strong>View the original LLaVA-NeXT-13B results table</strong></summary>
-
-<a href="assets/next13b-table.pdf"><img src="assets/next13b-table.png" width="100%" alt="Original ten-benchmark MiCo results on LLaVA-NeXT-13B" /></a>
-
-</details>
 
 ## Supported models
 
@@ -225,8 +156,6 @@ See the [full evaluation guide](docs/RUNNING.md#evaluation) for additional confi
 ## Validation
 
 The four environment profiles have been exercised with real model weights. Image-model checks use MME; video checks use 64-frame inference at both supported budgets. Paper-score reproduction remains under verification. See [validation records](VALIDATION.json) for scope and limitations.
-
-The README uses original figures and LaTeX tables from the paper project. PDF images are rasterized for GitHub display; click them for the vector originals. [Asset provenance](assets/SOURCES.json) records source files and hashes.
 
 ## Acknowledgements
 
