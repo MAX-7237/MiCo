@@ -1189,7 +1189,7 @@ class Qwen2_5_VLForConditionalGenerationPruning(Qwen2_5_VLForConditionalGenerati
                     selected_masks = torch.zeros(N, dtype=torch.bool, device=device)
                     selected_masks[selected_indices] = True
                 elif self.pruning_method in ('tsvol', 'tsvol_w', 'tsvol_anti', 'tsvol_w_anti'):
-                    # TSVOL (Text-Subspace VOLume) 从 LLaVA-TOPS-ICLR 移植到 Qwen2.5-VL。
+                    # TSVOL (Text-Subspace VOLume) selector for Qwen2.5-VL.
                     # 在 LLM 输入空间: 对 prompt 文本 embedding 做 SVD 取正交基 Q_T,
                     #   normal: 视觉 token 投影到文本子空间坐标 U=ie@Q_T (选和文本最相关+多样)
                     #   anti  : 取文本子空间正交补残差 U=ie-(ie@Q_T)Q_T^T (选和文本互补+多样)

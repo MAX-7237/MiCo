@@ -1,8 +1,7 @@
 """MMTok video port: the published coverage selector, independently per frame.
 
 Adapted from MMTok (Copyright 2025 Zoom Communications, Inc.; Apache-2.0),
-semantic_selector.py and text_processor.py. The image implementation is also
-present in LLaVA-TOPS-ICLR/llava/model/llava_arch.py (method ``mmtok``).
+semantic_selector.py and text_processor.py.
 
 Video adaptation: Q uses the current vision encoder's pre-projector features,
 pooled with the video's existing spatial pooling. P uses post-projector pooled

@@ -1,7 +1,6 @@
 """HoloV (NeurIPS 2025, arXiv 2510.02912) selector.
 
-Official reference: `LLaVA-TOPS-ICLR/llava/model/utils.py:HoloV` (and the copy
-vendored into `/path/to/local-assets`). An image's tokens are split into patches; a
+An image's tokens are split into patches; a
 keep-budget is allocated across patches by (CLS-attn + similarity-variance)
 score; the top-CLS-attn tokens inside each patch are kept. Selection only --
 HoloV does not merge.
