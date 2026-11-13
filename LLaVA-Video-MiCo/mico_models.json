@@ -4,7 +4,6 @@
     "kind": "video",
     "k": 6,
     "model_path": "lmms-lab/LLaVA-Video-7B-Qwen2",
-    "method": "mico_projected_llm_12",
-    "evidence": "Paper appendix schedule and original frozen run ATTN_COV_K=6; method suffix _12 is a legacy name, not the effective cut layer."
+    "method": "mico"
   }
 }

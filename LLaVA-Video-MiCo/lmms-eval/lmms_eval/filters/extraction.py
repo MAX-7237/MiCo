@@ -94,7 +94,7 @@ class MultiChoiceRegexFilter(RegexFilter):
         """
         regex_pattern: The basic regex pattern to use. If fails to match, we will use the customized match procedure
                         - step 1 : We parse the choices between ([A-Z])s then try to find these choices in the response.
-                        - step 2 : We parse the choice with regex :[\s]*([A-?]), where ? varies by number of choices.
+                        - step 2 : We parse the choice with regex :[\\s]*([A-?]), where ? varies by number of choices.
         group_select: Selects the (group_select)th match from the findall result.
         ignore_case: Ignores the case during step 1 matching
         ignore_punctuation: Remove the punctuation during step 1 matching
@@ -122,7 +122,9 @@ class MultiChoiceRegexFilter(RegexFilter):
                     match = convert_dict[match]
             return match
 
-        punct_tbl = dict.fromkeys(i for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith("P"))
+        punct_tbl = dict.fromkeys(
+            i for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith("P")
+        )
 
         def filter_ignores(st):
             if self.regexes_to_ignore is not None:
@@ -159,7 +161,7 @@ class MultiChoiceRegexFilter(RegexFilter):
                 next_alpha = chr(ord(next_alpha) + 1)
             fallback_regex = re.compile("|".join(fallback_regexes))
             without_paren_fallback_regex = "|".join(without_paren_fallback_regexes)
-            without_paren_fallback_regex = re.compile(f":[\s]*({without_paren_fallback_regex})")
+            without_paren_fallback_regex = re.compile(f":[\\s]*({without_paren_fallback_regex})")
 
             filtered = []
             for resp in r:
@@ -167,7 +169,9 @@ class MultiChoiceRegexFilter(RegexFilter):
                 if not match:
                     match = find_match(fallback_regex, filter_ignores(resp), choice_to_alpha)
                     if not match:
-                        match = find_match(without_paren_fallback_regex, resp, without_paren_to_target)
+                        match = find_match(
+                            without_paren_fallback_regex, resp, without_paren_to_target
+                        )
                 if not match:
                     match = self.fallback
                 filtered.append(match)
@@ -177,7 +181,9 @@ class MultiChoiceRegexFilter(RegexFilter):
 
 
 class ExtendedRegexFilter(RegexFilter):
-    punct_tbl = dict.fromkeys(i for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith("P"))
+    punct_tbl = dict.fromkeys(
+        i for i in range(sys.maxunicode) if unicodedata.category(chr(i)).startswith("P")
+    )
 
     def __init__(
         self,
@@ -224,7 +230,7 @@ class SimpleMultiChoiceRegexFilter(ExtendedRegexFilter):
         """
         regex_pattern: The basic regex pattern to use. If fails to match, we will use the customized match procedure
                         - step 1 : We parse the choices between ([A-Z])s then try to find these choices in the response.
-                        - step 2 : We parse the choice with regex :[\s]*([A-?]), where ? varies by number of choices.
+                        - step 2 : We parse the choice with regex :[\\s]*([A-?]), where ? varies by number of choices.
         group_select: Selects the (group_select)th match from the findall result.
         ignore_case: Ignores the case during step 1 matching
         ignore_punctuation: Remove the punctuation during step 1 matching

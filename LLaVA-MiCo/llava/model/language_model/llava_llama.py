@@ -3,29 +3,12 @@
 #    Licensed under the Apache License, Version 2.0 (the "License");
 
 from typing import List, Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
-
-from transformers import AutoConfig, AutoModelForCausalLM, \
-                         LlamaConfig, LlamaModel, LlamaForCausalLM
-
+from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaModel, LlamaForCausalLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.generation.utils import GenerateOutput
-
-from .modeling_llama_fastv import FastVLlamaModel
 from .modeling_llama_mico_coverage_llm import MiCoCoverageLLMLlamaModel
-from .modeling_llama_sparsevlm import SparseLlamaModel
-from .modeling_llama_divdriven import D2PLlamaModel
-from .modeling_llama_svd import SVDLlamaModel
-from .modeling_llama_tops_early import TOPSEarlyLlamaModel
-from .modeling_llama_holov2 import HoloV_2_LlamaModel
-from .modeling_llama_idea import IdeaLlamaModel
-from .modeling_llama_tops import TOPS_LlamaModel
-from .modeling_llama_pdrop import PDropLlamaModel
-from .modelling_llama_tops_prototype import TOPSPrototypeModel  # ⭐ 从 modelling_llama_tops_prototype 导入
-from .modelling_llama_mustdrop import MustDropLlamaModel  # MustDrop baseline
-from .modeling_llama_vscan import VScanLlamaModel  # 🔬 VScan baseline
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 
 
@@ -40,225 +23,51 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
         super(LlavaLlamaModel, self).__init__(config)
 
 
-class FastVLlavaLlamaModel(LlavaMetaModel, FastVLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, fastv_config: dict):
-        super(FastVLlavaLlamaModel, self).__init__(config, fastv_config=fastv_config)
-
-
 class MiCoCoverageLLMLlavaLlamaModel(LlavaMetaModel, MiCoCoverageLLMLlamaModel):
     config_class = LlavaLlamaConfig
 
     def __init__(self, config: LlamaConfig, mico_coverage_llm_config: dict):
-        super(MiCoCoverageLLMLlavaLlamaModel, self).__init__(config, mico_coverage_llm_config=mico_coverage_llm_config)
-
-
-class SparseLlavaLlamaModel(LlavaMetaModel, SparseLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, sparsevlm_config: dict):
-        super(SparseLlavaLlamaModel, self).__init__(config, sparsevlm_config=sparsevlm_config)
-
-#----------------------------------------------------------------------------------------------
-#D2P: Diversity Driven Pruning Algorithm
-class D2PLlavaLlamaModel(LlavaMetaModel, D2PLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, d2p_config: dict):
-        super(D2PLlavaLlamaModel, self).__init__(config, d2p_config=d2p_config)
-#----------------------------------------------------------------------------------------------
-
-#----------------------------------------------------------------------------------------------
-#SVDVLM: SVD-based Visual Language Model
-class SVDLlavaLlamaModel(LlavaMetaModel, SVDLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, svdvlm_config: dict):
-        super(SVDLlavaLlamaModel, self).__init__(config, svdvlm_config=svdvlm_config)
-#----------------------------------------------------------------------------------------------
-
-# -------------------------------------------------------------------------
-# TOPSEarly: Prefix-based Visual Language Model
-class TOPSEarlyLlavaLlamaModel(LlavaMetaModel, TOPSEarlyLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, tops_early_config: dict):
-        super(TOPSEarlyLlavaLlamaModel, self).__init__(config, tops_early_config=tops_early_config)
-# -------------------------------------------------------------------------
-
-# -------------------------------------------------------------------------
-# HoloV_2: HoloV_2 baseline
-class HoloV_2_LlavaLlamaModel(LlavaMetaModel, HoloV_2_LlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, holov2_config: dict):
-        super(HoloV_2_LlavaLlamaModel, self).__init__(config, holov2_config=holov2_config)
-# -------------------------------------------------------------------------
-
-# -------------------------------------------------------------------------
-# Idea: Idea baseline
-class Idea_LlavaLlamaModel(LlavaMetaModel, IdeaLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, idea_config: dict):
-        super(Idea_LlavaLlamaModel, self).__init__(config, idea_config=idea_config)
-# -------------------------------------------------------------------------
-
-
-# -------------------------------------------------------------------------
-# TOPS: TOPS baseline
-class TOPS_LlavaLlamaModel(LlavaMetaModel, TOPS_LlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, tops_config: dict):
-        super(TOPS_LlavaLlamaModel, self).__init__(config, tops_config=tops_config)
-# -------------------------------------------------------------------------
-class PDropLlavaLlamaModel(LlavaMetaModel, PDropLlamaModel):
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, pdrop_config: dict):
-        super(PDropLlavaLlamaModel, self).__init__(config, pdrop_config=pdrop_config)
-
-
-# ⭐ TOPSPrototype: Semantic-aware Token Allocation with Regional Visual Latent Model
-class TOPSPrototypeLlavaLlamaModel(LlavaMetaModel, TOPSPrototypeModel):
-    """
-    TOPSPrototype integrated with LLaVA
-    """
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, tops_prototype_config: dict):
-        super(TOPSPrototypeLlavaLlamaModel, self).__init__(config, tops_prototype_config=tops_prototype_config)
-
-
-# MustDrop: Dual Attention Filter baseline for comparison
-class MustDropLlavaLlamaModel(LlavaMetaModel, MustDropLlamaModel):
-    """
-    MustDrop baseline integrated with LLaVA.
-
-    Reference: MustDrop paper - "MustDrop: Training-free Token Dropping for Efficient VLMs"
-
-    Key features:
-    1. Vision Encoder: Layer 0 token merging + Layer 23 key set extraction
-    2. LLM: Dual Attention Filter at layers [2, 6, 10, 14]
-    3. KV Cache: Progressive sparsification
-    """
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, mustdrop_config: dict = None):
-        super(MustDropLlavaLlamaModel, self).__init__(config, mustdrop_config=mustdrop_config)
-
-
-# 🔬 VScan: Training-Free Visual Token Reduction for comparison
-class VScanLlavaLlamaModel(LlavaMetaModel, VScanLlamaModel):
-    """
-    VScan baseline integrated with LLaVA.
-
-    Reference: https://github.com/Tencent/SelfEvolvingAgent/tree/main/VScan
-
-    Key features:
-    1. Stage 1 (Vision Encoder): Complementary global and local scans
-    2. Stage 2 (LLM): Middle layer attention-based pruning
-    """
-    config_class = LlavaLlamaConfig
-
-    def __init__(self, config: LlamaConfig, vscan_config: dict = None):
-        super(VScanLlavaLlamaModel, self).__init__(config, vscan_config=vscan_config)
+        super(MiCoCoverageLLMLlavaLlamaModel, self).__init__(
+            config, mico_coverage_llm_config=mico_coverage_llm_config
+        )
 
 
 class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaLlamaConfig
 
-    def __init__(self, config, pruning_method=None, visual_token_num=None,
-                 use_fastv=False, fastv_config=None,
-                 use_mico_coverage_llm=False, mico_coverage_llm_config=None,
-                 use_sparsevlm=False, sparsevlm_config=None,
-                 use_svdvlm=False, svdvlm_config=None,
-                 use_tops_early=False, tops_early_config=None,
-                 use_d2p=False, d2p_config=None,
-                 use_holov2=False, holov2_config=None,
-                 use_idea=False, idea_config=None,
-                 use_tops=False, tops_config=None,
-                 use_pdrop=False, pdrop_config=None,
-                 use_tops_prototype=False, tops_prototype_config=None,  # ⭐ 参数名: use_tops_prototype, tops_prototype_config
-                 use_mustdrop=False, mustdrop_config=None,  # MustDrop baseline
-                 **kwargs):
-        # 🔥 MustDrop: Set config flag BEFORE model creation
-        # This ensures build_vision_tower() uses CLIPVisionTowerMustDrop
-        if use_mustdrop:
-            config.use_mustdrop = True
-            # Store mustdrop_config in config for later access
-            config.mustdrop_config = mustdrop_config if mustdrop_config else {}
-
+    def __init__(
+        self,
+        config,
+        pruning_method=None,
+        visual_token_num=None,
+        use_mico_coverage_llm=False,
+        mico_coverage_llm_config=None,
+        **kwargs,
+    ):
+        pruning_method = pruning_method or "vanilla"
+        if pruning_method not in ("vanilla", "mico_s1", "mico_7", "mico_8", "mico_14"):
+            raise ValueError("Unsupported MiCo configuration")
         super(LlamaForCausalLM, self).__init__(config)
-
-        # ⭐ Model selection with TOPSPrototype and MustDrop support
-        if use_mustdrop:
-            print(f"Use MustDrop: {mustdrop_config}")
-            self.model = MustDropLlavaLlamaModel(config, mustdrop_config=mustdrop_config)
-        elif use_tops_prototype:
-            self.model = TOPSPrototypeLlavaLlamaModel(config, tops_prototype_config=tops_prototype_config)
-        elif use_mico_coverage_llm:
+        if use_mico_coverage_llm:
             print(f"Use Attn-Cov-LLM: {mico_coverage_llm_config}")
             self.model = MiCoCoverageLLMLlavaLlamaModel(config, mico_coverage_llm_config)
-        elif use_fastv:
-            print(f"Use FastV: {fastv_config}")
-            self.model = FastVLlavaLlamaModel(config, fastv_config)
-        elif use_sparsevlm:
-            print(f"Use SparseVLM: {sparsevlm_config}")
-            self.model = SparseLlavaLlamaModel(config, sparsevlm_config=sparsevlm_config)
-        elif use_d2p:
-            print(f"Use D2P: {d2p_config}")
-            self.model = D2PLlavaLlamaModel(config, d2p_config=d2p_config)
-        elif use_svdvlm:
-            print(f"Use SVDVLM: {svdvlm_config}")
-            self.model = SVDLlavaLlamaModel(config, svdvlm_config=svdvlm_config)
-        elif use_tops_early:
-            print(f"Use TOPSEarly: {tops_early_config}")
-            self.model = TOPSEarlyLlavaLlamaModel(config, tops_early_config=tops_early_config)
-        elif use_holov2:
-            print(f"Use HoloV_2: {holov2_config}")
-            self.model = HoloV_2_LlavaLlamaModel(config, holov2_config=holov2_config)
-        elif use_idea:
-            print(f"Use Idea: {idea_config}")
-            self.model = Idea_LlavaLlamaModel(config, idea_config=idea_config)
-        elif use_tops:
-            print(f"Use TOPS: {tops_config}")
-            self.model = TOPS_LlavaLlamaModel(config, tops_config=tops_config)
-        elif use_pdrop:
-            print(f"Use PDrop: {pdrop_config}")
-            self.model = PDropLlavaLlamaModel(config, pdrop_config=pdrop_config)
         else:
             self.model = LlavaLlamaModel(config)
-
         self.pretraining_tp = config.pretraining_tp
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        # Visual Token Pruning config
         self.pruning_method = pruning_method
         self.visual_token_num = visual_token_num
-
-        # 🔥 MustDrop: Store flag and config for access in forward/generate
-        self.use_mustdrop = use_mustdrop
-        self.mustdrop_config = mustdrop_config
-
-        # Latency
         self.start_latency = False
         self.phase = "prefill"
         self.start_event = torch.cuda.Event(enable_timing=True)
         self.end_event = torch.cuda.Event(enable_timing=True)
         self.prefill_latency = 0.0
         self.decode_latency = 0.0
-
-        # FLOPS tracking
         self.track_flops = False
-        self.layer_visual_tokens = []  # Record visual tokens per layer
-        self.total_flops = 0.0  # Total FLOPs in TFLOPs
-        self.flops_count = 0  # Number of samples for averaging
-
-        # Initialize weights and apply final processing
+        self.layer_visual_tokens = []
+        self.total_flops = 0.0
+        self.flops_count = 0
         self.post_init()
 
     def get_pruning_method(self):
@@ -286,16 +95,12 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         """
         if not self.layer_visual_tokens:
             return 0.0
-
         d = self.config.hidden_size
         m = self.config.intermediate_size
-
         flops = 0.0
         for n in self.layer_visual_tokens:
-            flops += (8 * n * d * d + 4 * n * n * d + 6 * n * d * m)
-
-        # Convert to TFLOPs
-        flops_tflops = flops / 1e12
+            flops += 8 * n * d * d + 4 * n * n * d + 6 * n * d * m
+        flops_tflops = flops / 1000000000000.0
         return flops_tflops
 
     def record_layer_tokens(self, layer_tokens):
@@ -326,71 +131,28 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         image_sizes: Optional[List[List[int]]] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-
         if inputs_embeds is None:
-            (
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                inputs_embeds,
-                labels
-            ) = self.prepare_inputs_labels_for_multimodal(
-                input_ids,
-                position_ids,
-                attention_mask,
-                past_key_values,
-                labels,
-                images,
-                image_sizes
+            input_ids, position_ids, attention_mask, past_key_values, inputs_embeds, labels = (
+                self.prepare_inputs_labels_for_multimodal(
+                    input_ids,
+                    position_ids,
+                    attention_mask,
+                    past_key_values,
+                    labels,
+                    images,
+                    image_sizes,
+                )
             )
-
-        # MustDrop: Set parameters on model before forward
-        # Reference: MustDrop sparse_llava_llama.py parameter passing
-        if hasattr(self.model, 'img_seq') and images is not None and inputs_embeds is not None:
-            # 🔥 MustDrop Full Integration: Get actual values from Vision Encoder
-            # Reference: MustDrop clip_encoder.py + modelling_sparse_llama.py
-            if self.use_mustdrop and hasattr(self, '_mustdrop_img_seq'):
-                # Use actual values from MustDrop Vision Encoder
-                # img_seq: Number of visual tokens AFTER merging (< 576)
-                self.model.img_seq = self._mustdrop_img_seq
-
-                # key_set: Format expected by MustDropLlamaModel is [num_keys, key_indices_tensor]
-                # Reference: modelling_llama_mustdrop.py:256-257
-                if self._mustdrop_key_set is not None:
-                    key_set = self._mustdrop_key_set
-                    # key_set shape: [B, K] where K is number of key tokens
-                    num_keys = key_set.shape[1] if key_set.dim() > 1 else key_set.shape[0]
-                    key_indices = key_set[0] if key_set.dim() > 1 else key_set  # Take first batch
-                    self.model.key_set = [num_keys, key_indices]
-                else:
-                    self.model.key_set = None
-
-                print(f"[MustDrop] img_seq={self.model.img_seq} (after merging), "
-                      f"key_set_size={self.model.key_set[0] if self.model.key_set else 0}")
-            else:
-                # Fallback: Standard LLaVA without Vision Encoder modifications
-                # Default LLaVA: 576 tokens for 336x336 image with 14x14 patch
-                self.model.img_seq = 576
-                self.model.key_set = None
-
-            # System prompt length (before image tokens)
-            # Reference: MustDrop modelling_sparse_llama.py:237
-            self.model.pre_prompt_length_list = [35]  # Default LLaVA system prompt length
-
-            # Total token length
+        if hasattr(self.model, "img_seq") and images is not None and (inputs_embeds is not None):
+            self.model.img_seq = 576
+            self.model.key_set = None
+            self.model.pre_prompt_length_list = [35]
             self.model.token_length_list = [inputs_embeds.shape[1]]
-
         if self.start_latency:
             if self.phase == "prefill" and input_ids is None:
                 self.start_event.record()
-            elif self.phase == "decode" and input_ids is not None and input_ids.shape[1] == 1:
+            elif self.phase == "decode" and input_ids is not None and (input_ids.shape[1] == 1):
                 self.start_event.record()
-
-        # Pass token library to inner model for dynamic cluster expand/collapse (idea method)
-        if hasattr(self, '_idea_token_library'):
-            self.model._idea_token_library = self._idea_token_library
-
         output = super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -401,27 +163,19 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             use_cache=use_cache,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
-            return_dict=return_dict
+            return_dict=return_dict,
         )
-
         if self.start_latency:
             if self.phase == "prefill" and input_ids is None:
                 self.end_event.record()
                 torch.cuda.synchronize()
                 self.prefill_latency += self.start_event.elapsed_time(self.end_event)
                 self.phase = "decode"
-            elif self.phase == "decode" and input_ids is not None and input_ids.shape[1] == 1:
+            elif self.phase == "decode" and input_ids is not None and (input_ids.shape[1] == 1):
                 self.end_event.record()
                 torch.cuda.synchronize()
                 self.decode_latency += self.start_event.elapsed_time(self.end_event)
                 self.phase = "prefill"
-
-        # Clean up dynamic cluster state after forward (idea method)
-        if hasattr(self.model, '_idea_expanded_clusters'):
-            del self.model._idea_expanded_clusters
-        if hasattr(self.model, '_idea_current_token_cluster_ids'):
-            del self.model._idea_current_token_cluster_ids
-
         return output
 
     @torch.no_grad()
@@ -437,79 +191,45 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         attention_mask = kwargs.pop("attention_mask", None)
         if "inputs_embeds" in kwargs:
             raise NotImplementedError("`inputs_embeds` is not supported")
-
         if images is not None:
-            (
-                inputs,
-                position_ids,
-                attention_mask,
-                _,
-                inputs_embeds,
-                _,
-                visual_token_num
-            ) = self.prepare_inputs_labels_for_multimodal(
-                inputs,
-                position_ids,
-                attention_mask,
-                None,
-                None,
-                images,
-                image_sizes=image_sizes,
-                texts=texts
+            inputs, position_ids, attention_mask, _, inputs_embeds, _, visual_token_num = (
+                self.prepare_inputs_labels_for_multimodal(
+                    inputs,
+                    position_ids,
+                    attention_mask,
+                    None,
+                    None,
+                    images,
+                    image_sizes=image_sizes,
+                    texts=texts,
+                )
             )
-
-            # merge_mico_coverage_llm / dynamic Attn-Cov-LLM: N after merge differs from
-            # the hardcoded 576/2880, so refresh visual_token_length (and R) here.
-            if hasattr(self.model, 'update_runtime_visual_length') and visual_token_num:
+            if hasattr(self.model, "update_runtime_visual_length") and visual_token_num:
                 r_keep = self.model.update_runtime_visual_length(int(visual_token_num))
-                if getattr(self.model, 'dynamic_R', False) and not getattr(self, '_mico_coverage_dyn_r_logged', False):
+                if getattr(self.model, "dynamic_R", False) and (
+                    not getattr(self, "_mico_coverage_dyn_r_logged", False)
+                ):
                     print(
-                        f"[mico_coverage_llm dynamic_R] N_enter={visual_token_num} "
-                        f"T_avg={getattr(self.model, 'T_avg', None)} "
-                        f"K={getattr(self.model, 'K', None)} "
-                        f"L={len(self.model.layers)} -> R={r_keep}",
+                        f"[mico_coverage_llm dynamic_R] N_enter={visual_token_num} T_avg={getattr(self.model, 'T_avg', None)} K={getattr(self.model, 'K', None)} L={len(self.model.layers)} -> R={r_keep}",
                         flush=True,
                     )
                     self._mico_coverage_dyn_r_logged = True
-
-            # 🔥 MustDrop: Set parameters on model before generate
-            # This is needed because generate() internally calls forward()
-            if self.use_mustdrop and hasattr(self.model, 'img_seq'):
-                if hasattr(self, '_mustdrop_img_seq'):
-                    self.model.img_seq = self._mustdrop_img_seq
-
-                    if self._mustdrop_key_set is not None:
-                        key_set = self._mustdrop_key_set
-                        num_keys = key_set.shape[1] if key_set.dim() > 1 else key_set.shape[0]
-                        key_indices = key_set[0] if key_set.dim() > 1 else key_set
-                        self.model.key_set = [num_keys, key_indices]
-                    else:
-                        self.model.key_set = None
-                else:
-                    self.model.img_seq = 576
-                    self.model.key_set = None
-
-                self.model.pre_prompt_length_list = [35]
-                self.model.token_length_list = [inputs_embeds.shape[1]]
         else:
             inputs_embeds = self.get_model().embed_tokens(inputs)
             visual_token_num = 0
-
         output = super().generate(
             position_ids=position_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
-            **kwargs
+            **kwargs,
         )
-
-        # Record layer visual tokens for FLOPS calculation (for TOPSPrototype models)
-        if hasattr(self.model, 'layer_visual_tokens') and self.model.layer_visual_tokens:
+        if hasattr(self.model, "layer_visual_tokens") and self.model.layer_visual_tokens:
             self.record_layer_tokens(self.model.layer_visual_tokens)
+        return (output, visual_token_num)
 
-        return output, visual_token_num
-
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None,
-                                      inputs_embeds=None, **kwargs):
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, inputs_embeds=None, **kwargs
+    ):
         images = kwargs.pop("images", None)
         image_sizes = kwargs.pop("image_sizes", None)
         texts = kwargs.pop("texts", None)

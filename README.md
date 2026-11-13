@@ -10,9 +10,11 @@
 | Qwen3-VL · 8B | [VLMEvalKit-MiCo-Qwen3](VLMEvalKit-MiCo-Qwen3/run_mico.py) | `vlmevalkit-qwen3vl` |
 | Qwen3.5 · 9B | [Qwen3.5-MiCo](Qwen3.5-MiCo/run_mico.py) | `vlmevalkit-qwen3vl` |
 
+See the [source layout](docs/STRUCTURE.md) for implementation entry points.
+
 ## Quick start
 
-Choose the model family below. Each group includes environment setup and a runnable launcher example. Use **Linux with an NVIDIA GPU**, and download the model weights and benchmark data separately.
+Choose the model family below. Each group includes environment setup and a runnable launcher example. Use **Linux x86-64 with an NVIDIA GPU**, and download the model weights and benchmark data separately.
 
 ```bash
 # Download this repository and extract it into the MiCo directory.
@@ -31,8 +33,7 @@ The commands below run inference or evaluation directly, assuming the environmen
 cd "$REPO_ROOT/LLaVA-MiCo"
 conda create -n llava python=3.10 -y
 conda activate llava
-python -m pip install -r requirements.txt
-python -m pip check
+python ../setup_environment.py --component LLaVA-MiCo
 ```
 
 | Backbone | `--model` | `--tokens` choices |
@@ -65,7 +66,7 @@ python run_mico.py --model llava-next-13b --tokens 640 \
 
 ```
 
-The launcher selects the default Hugging Face model ID for each alias; use `--model-path /path/to/weights` for local image-model weights. These commands write predictions. Run the relevant benchmark scorer afterwards; MMBench and ScienceQA also provide dedicated evaluation modules under `llava/eval`.
+The launcher selects the default Hugging Face model ID for each alias; use `--model-path /path/to/weights` for local image-model weights. These commands write predictions. Run the relevant benchmark scorer afterwards; local ScienceQA, TextVQA and POPE scorers are provided under `llava/eval`.
 
 ### 2. LLaVA-Video — 7B Qwen2
 
@@ -75,17 +76,14 @@ Video has its own environment; do not install its dependencies into `llava`.
 cd "$REPO_ROOT/LLaVA-Video-MiCo"
 conda create -n llavavid python=3.10 -y
 conda activate llavavid
-python -m pip install -r requirements.txt
-python ../tools/repair_decord_wheel.py
-python -m pip install --no-build-isolation -r requirements-flash-attn.txt
-python -m pip check
+python ../setup_environment.py --component LLaVA-Video-MiCo
 
 python run_mico.py --model llava-video-7b --tokens 32 \
   --model-path lmms-lab/LLaVA-Video-7B-Qwen2 \
   --dataset videomme --nproc 1 --work-dir outputs/video
 ```
 
-The adapter uses the Qwen conversation template and samples up to **64 frames**. The token budget is **per frame** (`32/16`). Prepare VideoMME according to `lmms-eval/lmms_eval/tasks/videomme`, or select another registered video task with `--dataset`. Predictions and evaluation artifacts go under `--work-dir`. The video environment passed real 64-frame GPU inference and pruning-budget checks at both budgets; full video accuracy reproduction has not been tested.
+The adapter uses the Qwen conversation template and samples up to **64 frames**. The token budget is **per frame** (`32/16`). Prepare VideoMME according to `lmms-eval/lmms_eval/tasks/videomme`, or select another registered video task with `--dataset`. Predictions and evaluation artifacts go under `--work-dir`.
 
 ### 3. Qwen2.5-VL and InternVL3
 
@@ -95,10 +93,7 @@ Both backbones share `vlmevalkit-qwen2.5vl` and the VLMEvalKit entry point.
 cd "$REPO_ROOT/VLMEvalKit-MiCo"
 conda create -n vlmevalkit-qwen2.5vl python=3.11 -y
 conda activate vlmevalkit-qwen2.5vl
-python -m pip install -r requirements.txt
-python ../tools/repair_decord_wheel.py
-python -m pip install --no-build-isolation -r requirements-flash-attn.txt
-python -m pip check
+python ../setup_environment.py --component VLMEvalKit-MiCo
 
 # Qwen2.5-VL-7B-Instruct
 python run_mico.py --model qwen2.5-vl-7b --tokens 256 \
@@ -123,9 +118,7 @@ These components share `vlmevalkit-qwen3vl` (Python 3.12, PyTorch 2.7.0, Transfo
 cd "$REPO_ROOT/VLMEvalKit-MiCo-Qwen3"
 conda create -n vlmevalkit-qwen3vl python=3.12 -y
 conda activate vlmevalkit-qwen3vl
-python -m pip install -r requirements.txt
-python ../tools/repair_decord_wheel.py
-python -m pip check
+python ../setup_environment.py --component VLMEvalKit-MiCo-Qwen3
 
 python run_mico.py --model qwen3-vl-8b --tokens 128 \
   --dataset AI2D_TEST --nproc 1 --work-dir outputs/qwen3
@@ -140,9 +133,7 @@ Activate the shared environment created above. If you only need Qwen3.5, create 
 ```bash
 cd "$REPO_ROOT/Qwen3.5-MiCo"
 conda activate vlmevalkit-qwen3vl
-python -m pip install -r requirements.txt
-python ../tools/repair_decord_wheel.py
-python -m pip check
+python ../setup_environment.py --component Qwen3.5-MiCo
 
 python run_mico.py --model-path Qwen/Qwen3.5-9B \
   --image /path/to/image.jpg --question 'What is shown in the image?' \
@@ -153,9 +144,6 @@ The default is the MiCo QK recipe at layer 12, with SDPA, one image, batch size 
 
 See the [full evaluation guide](docs/RUNNING.md#evaluation) for additional configuration and scoring details.
 
-## Validation
-
-The four environment profiles have been exercised with real model weights. Image-model checks use MME; video checks use 64-frame inference at both supported budgets. Paper-score reproduction remains under verification. See [validation records](VALIDATION.json) for scope and limitations.
 
 ## Acknowledgements
 

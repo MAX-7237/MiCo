@@ -3,7 +3,7 @@ from ...smp import *
 import numpy as np
 import pandas as pd
 
-FAIL_MSG = 'Failed to obtain answer via API.'
+FAIL_MSG = "Failed to obtain answer via API."
 
 
 CAL_SCORE_PROMPT = """Please evaluate the following video-based question-answer pair:
@@ -15,20 +15,16 @@ Predicted Answer: {pred_response}
 Provide your evaluation only as a yes/no and score where the score is an integer value between 0 and 5, with 5 indicating the highest meaningful match.
 Please generate the response in the form of a Python dictionary string with keys 'pred' and 'score', where value of 'pred' is  a string of 'yes' or 'no' and value of 'score' is in INTEGER, not STRING.
 DO NOT PROVIDE ANY OTHER OUTPUT TEXT OR EXPLANATION. Only provide the Python dictionary string.
-For example, your response should look like this: \{'pred': 'yes', 'score': 4.8\}.
+For example, your response should look like this: \\{'pred': 'yes', 'score': 4.8\\}.
 """
 
-MOVIECHAT1K_DIMENSIONS = {
-    'global': ['global'],
-    'breakpoint': ['breakpoint'],
-    'overall': []
-}
+MOVIECHAT1K_DIMENSIONS = {"global": ["global"], "breakpoint": ["breakpoint"], "overall": []}
 
 L3_DIMS = []
 for k, v in MOVIECHAT1K_DIMENSIONS.items():
-    if k != 'overall':
+    if k != "overall":
         L3_DIMS.extend(v)
-        MOVIECHAT1K_DIMENSIONS['overall'].extend(v)
+        MOVIECHAT1K_DIMENSIONS["overall"].extend(v)
 
 
 def get_dimension_rating(data_path):
@@ -55,33 +51,33 @@ def get_dimension_rating(data_path):
         return None
 
     for i in range(len(data)):
-        mode = data.iloc[i]['mode'].lower()  # Convert to lowercase
-        score_dict = parse_score_dict(data.iloc[i]['score'])
-        if score_dict and isinstance(score_dict, dict) and 'pred' in score_dict and 'score' in score_dict:
-            score = score_dict['score']
-            is_correct = 1 if score_dict['pred'].lower() == 'yes' else 0
+        mode = data.iloc[i]["mode"].lower()  # Convert to lowercase
+        score_dict = parse_score_dict(data.iloc[i]["score"])
+        if (
+            score_dict
+            and isinstance(score_dict, dict)
+            and "pred" in score_dict
+            and "score" in score_dict
+        ):
+            score = score_dict["score"]
+            is_correct = 1 if score_dict["pred"].lower() == "yes" else 0
         else:
             score = -1
             is_correct = -1
 
         # Map caption types to their lowercase versions
-        if mode in ['global', 'breakpoint']:
+        if mode in ["global", "breakpoint"]:
             coarse_rating[mode].append(score)
-            coarse_rating['overall'].append(score)
+            coarse_rating["overall"].append(score)
 
             if is_correct != -1:
                 coarse_acc[mode].append(is_correct)
-                coarse_acc['overall'].append(is_correct)
+                coarse_acc["overall"].append(is_correct)
 
+    coarse_valid = {k: f"{np.mean([x for x in v if x >= 0]):.2f}" for k, v in coarse_rating.items()}
+    coarse_accuracy = {k: f"{np.mean(v):.2f}" if v else "0.00" for k, v in coarse_acc.items()}
 
-    coarse_valid = {k: f'{np.mean([x for x in v if x >= 0]):.2f}' for k, v in coarse_rating.items()}
-    coarse_accuracy = {k: f'{np.mean(v):.2f}' if v else '0.00' for k, v in coarse_acc.items()}
-
-    return dict(
-        coarse_valid=coarse_valid,
-        coarse_accuracy=coarse_accuracy
-    )
-
+    return dict(coarse_valid=coarse_valid, coarse_accuracy=coarse_accuracy)
 
 
 def prepare_score_prompt(item):
@@ -97,7 +93,6 @@ def prepare_score_prompt(item):
     # Convert Series to dictionary if needed
     if isinstance(item, pd.Series):
         item = item.to_dict()
-
 
     prompt = f"""Please evaluate the following video-based question-answer pair:\n\n
             Question: {item['question']}\n

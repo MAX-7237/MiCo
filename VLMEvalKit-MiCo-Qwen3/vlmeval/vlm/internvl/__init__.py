@@ -1,3 +1,1 @@
-from .model import InternVLChat
-
-__all__ = ['InternVLChat']
+"""Shared prompt and image-preprocessing utilities."""

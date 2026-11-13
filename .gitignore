@@ -12,3 +12,16 @@ wandb/
 *.csv
 
 /paper-source/
+
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.cache/
+checkpoints/
+weights/
+runs/
+*.log
+*.tmp

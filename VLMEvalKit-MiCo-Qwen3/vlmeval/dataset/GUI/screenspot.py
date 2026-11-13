@@ -32,10 +32,14 @@ logger = get_logger("RUN")
 
 SYSTEM_PROMPT = """You are a GUI agent. You are given a task and a screenshot of the screen. You need to perform pyautogui click/moveTo action to complete the task."""  # noqa: E501
 
-USER_INSTRUCTION = """Please complete the following tasks by clicking using `pyautogui.click`:\n{instruction}"""
+USER_INSTRUCTION = (
+    """Please complete the following tasks by clicking using `pyautogui.click`:\n{instruction}"""
+)
 
 SYSTEM_PROMPT_V2 = """You are a GUI agent. You are given a screenshot of the screen and the description of a target element. You need to click the target element using `pyautogui.click`."""  # noqa: E501
-USER_INSTRUCTION_V2 = """Please click the following target element using `pyautogui.click`:\n{description}"""
+USER_INSTRUCTION_V2 = (
+    """Please click the following target element using `pyautogui.click`:\n{description}"""
+)
 
 
 def parse_bbox_aguvis(response):
@@ -143,9 +147,9 @@ class ScreenSpot(ImageBaseDataset):
         "ScreenSpot_Web": "ScreenSpot_Web.tsv",
     }  # path
     DATASET_URL_V2 = {
-        "ScreenSpot_Mobile": "/mnt/petrelfs/share_data/suweijie/workspace_dx/screenspot/screenspot_mobile_ug.json",
-        "ScreenSpot_Desktop": "/mnt/petrelfs/share_data/suweijie/workspace_dx/screenspot/screenspot_desktop_ug.json",
-        "ScreenSpot_Web": "/mnt/petrelfs/share_data/suweijie/workspace_dx/screenspot/screenspot_web_ug.json",
+        "ScreenSpot_Mobile": "/path/to/datasets/screenspot/screenspot_mobile_ug.json",
+        "ScreenSpot_Desktop": "/path/to/datasets/screenspot/screenspot_desktop_ug.json",
+        "ScreenSpot_Web": "/path/to/datasets/screenspot/screenspot_web_ug.json",
     }  # path
     DATASET_MD5 = {}
     EVAL_TYPE = "point"  # point or rectangle
@@ -238,9 +242,7 @@ class ScreenSpot(ImageBaseDataset):
         if self.RE_TYPE == "functional":
             user_instruction = USER_INSTRUCTION.format(instruction=line["question"])
         else:
-            user_instruction = USER_INSTRUCTION_V2.format(
-                description=line["description"]
-            )
+            user_instruction = USER_INSTRUCTION_V2.format(description=line["description"])
 
         msgs = []
         # add system prompt
@@ -291,9 +293,7 @@ class ScreenSpot(ImageBaseDataset):
         lines = [data.iloc[i] for i in range(lt)]
         for i in tqdm(range(len(lines))):
             line = lines[i]
-            bbox = convert_bbox(
-                line["bbox"], os.path.join(self.img_root, line["image_path"])
-            )
+            bbox = convert_bbox(line["bbox"], os.path.join(self.img_root, line["image_path"]))
             prediction = str(line["prediction"])
             try:
                 click_point = parse_bbox_aguvis(prediction)
@@ -361,9 +361,7 @@ class ScreenSpot(ImageBaseDataset):
             SCREENSPOT_result["num_action"] += 1
             line = lines[i]
             bbox = (
-                line["bbox"]
-                if isinstance(line["bbox"], list)
-                else ast.literal_eval(line["bbox"])
+                line["bbox"] if isinstance(line["bbox"], list) else ast.literal_eval(line["bbox"])
             )
             bbox = [bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]]
             image = Image.open(os.path.join(self.img_root, line["image_path"]))
@@ -377,8 +375,9 @@ class ScreenSpot(ImageBaseDataset):
             prediction = str(line["prediction"])
             try:
                 click_point = parse_bbox_aguvis(prediction)
-                match = (bbox[0] <= click_point[0] <= bbox[2]) and \
-                    (bbox[1] <= click_point[1] <= bbox[3])
+                match = (bbox[0] <= click_point[0] <= bbox[2]) and (
+                    bbox[1] <= click_point[1] <= bbox[3]
+                )
                 if match:
                     SCREENSPOT_result["corr_action"] += 1
                     if line["ui_type"] == "text":
@@ -389,10 +388,7 @@ class ScreenSpot(ImageBaseDataset):
                         SCREENSPOT_result["icon_num"] += 1
                     logger.debug(
                         "match "
-                        + str(
-                            SCREENSPOT_result["corr_action"]
-                            / SCREENSPOT_result["num_action"]
-                        )
+                        + str(SCREENSPOT_result["corr_action"] / SCREENSPOT_result["num_action"])
                     )
                 else:
                     if line["ui_type"] == "text":
@@ -403,10 +399,7 @@ class ScreenSpot(ImageBaseDataset):
                         SCREENSPOT_result["icon_num"] += 1
                     logging.debug(
                         "unmatch "
-                        + str(
-                            SCREENSPOT_result["corr_action"]
-                            / SCREENSPOT_result["num_action"]
-                        )
+                        + str(SCREENSPOT_result["corr_action"] / SCREENSPOT_result["num_action"])
                     )
                 is_wrong_format = False
 
@@ -438,14 +431,12 @@ class ScreenSpot(ImageBaseDataset):
 
         action_acc = SCREENSPOT_result["corr_action"] / SCREENSPOT_result["num_action"] * 100
         text_acc = (
-            sum(SCREENSPOT_result["text_correct"])
-            / len(SCREENSPOT_result["text_correct"])
+            sum(SCREENSPOT_result["text_correct"]) / len(SCREENSPOT_result["text_correct"])
             if len(SCREENSPOT_result["text_correct"]) != 0
             else 0
         ) * 100
         icon_acc = (
-            sum(SCREENSPOT_result["icon_correct"])
-            / len(SCREENSPOT_result["icon_correct"])
+            sum(SCREENSPOT_result["icon_correct"]) / len(SCREENSPOT_result["icon_correct"])
             if len(SCREENSPOT_result["icon_correct"]) != 0
             else 0
         ) * 100
@@ -453,9 +444,7 @@ class ScreenSpot(ImageBaseDataset):
         final_score_dict = {}
         final_score_dict["Action Acc"] = str(action_acc)
         final_score_dict["Total num"] = str(SCREENSPOT_result["num_action"])
-        final_score_dict["Wrong format num"] = str(
-            SCREENSPOT_result["num_wrong_format"]
-        )
+        final_score_dict["Wrong format num"] = str(SCREENSPOT_result["num_wrong_format"])
         final_score_dict["Text Num"] = str(SCREENSPOT_result["text_num"])
         final_score_dict["Icon Num"] = str(SCREENSPOT_result["icon_num"])
         final_score_dict["Text Acc"] = str(text_acc)
@@ -466,18 +455,26 @@ class ScreenSpot(ImageBaseDataset):
 
         failure_cases_path = os.environ.get("FAILURE_CASES_PATH", None)
         if failure_cases_path is not None:
+
             def click_distance(bbox, click_point):
                 x, y = click_point
                 x1, y1, x2, y2 = bbox
                 w, h = x2 - x1, y2 - y1
                 center = [(x1 + x2) / 2, (y1 + y2) / 2]
                 abs_shift_to_center = [abs(x - center[0]), abs(y - center[1])]
-                width_outside, height_outside = [max(0, abs_shift_to_center[0] - w / 2), max(0, abs_shift_to_center[1] - h / 2)]  # noqa: E501
-                return (width_outside ** 2 + height_outside ** 2) ** 0.5
+                width_outside, height_outside = [
+                    max(0, abs_shift_to_center[0] - w / 2),
+                    max(0, abs_shift_to_center[1] - h / 2),
+                ]  # noqa: E501
+                return (width_outside**2 + height_outside**2) ** 0.5
 
             wrong_format_result = [res for res in result if res["is_wrong_format"]]
-            missed_result = [res for res in result if not res["match"] and not res["is_wrong_format"]]
-            missed_result.sort(key=lambda r: click_distance(r["parsed_bbox"], r["pred"]), reverse=True)
+            missed_result = [
+                res for res in result if not res["match"] and not res["is_wrong_format"]
+            ]
+            missed_result.sort(
+                key=lambda r: click_distance(r["parsed_bbox"], r["pred"]), reverse=True
+            )
             failure_cases = wrong_format_result + missed_result
 
             with open(failure_cases_path, "w") as f:
